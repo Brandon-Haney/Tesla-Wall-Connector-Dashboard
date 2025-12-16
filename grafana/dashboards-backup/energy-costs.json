@@ -1,0 +1,438 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "gridPos": { "h": 2, "w": 24, "x": 0, "y": 0 },
+      "id": 1,
+      "options": {
+        "content": "# Energy & Cost Analysis\nCharging costs calculated using ComEd hourly pricing",
+        "mode": "markdown"
+      },
+      "title": "",
+      "transparent": true,
+      "type": "text"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "kwatth"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 2 },
+      "id": 2,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["sum"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"twc_vitals\")\n  |> filter(fn: (r) => r._field == \"session_energy_wh\")\n  |> filter(fn: (r) => r.charger_id =~ /${charger}/)\n  |> difference(nonNegative: true)\n  |> sum()\n  |> map(fn: (r) => ({r with _value: r._value / 1000.0}))\n  |> keep(columns: [\"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Total Energy (Period)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 2 },
+      "id": 3,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"twc_lifetime\")\n  |> filter(fn: (r) => r._field == \"charge_starts\")\n  |> filter(fn: (r) => r.charger_id =~ /${charger}/)\n  |> last()\n  |> keep(columns: [\"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Total Charge Sessions",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 4 },
+              { "color": "red", "value": 8 }
+            ]
+          },
+          "unit": "cent"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 2 },
+      "id": 4,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["mean"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"comed_price\")\n  |> filter(fn: (r) => r._field == \"price_cents_kwh\")\n  |> filter(fn: (r) => r.price_type == \"5min\")\n  |> mean()\n  |> keep(columns: [\"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Avg Price",
+      "description": "Average ComEd price during selected period",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "suffix: hrs"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 2 },
+      "id": 5,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"twc_lifetime\")\n  |> filter(fn: (r) => r._field == \"charging_hours\")\n  |> filter(fn: (r) => r.charger_id =~ /${charger}/)\n  |> last()\n  |> keep(columns: [\"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Total Charging Time",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Energy (kWh)",
+            "axisPlacement": "auto",
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineWidth": 1,
+            "scaleDistribution": { "type": "linear" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "kwatth"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "id": 6,
+      "options": {
+        "barRadius": 0.1,
+        "barWidth": 0.8,
+        "groupWidth": 0.7,
+        "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "orientation": "auto",
+        "showValue": "never",
+        "stacking": "none",
+        "tooltip": { "mode": "single", "sort": "none" },
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 200
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"twc_vitals\")\n  |> filter(fn: (r) => r._field == \"session_energy_wh\")\n  |> filter(fn: (r) => r.charger_id =~ /${charger}/)\n  |> difference(nonNegative: true)\n  |> aggregateWindow(every: 1h, fn: sum, createEmpty: true)\n  |> map(fn: (r) => ({r with _value: r._value / 1000.0}))\n  |> keep(columns: [\"_time\", \"_value\", \"charger_id\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Hourly Energy Consumption",
+      "type": "barchart"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "axisSoftMin": 0,
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "gradientMode": "scheme",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "barAlignment": 0,
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "area" }
+          },
+          "displayName": "Price",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 4 },
+              { "color": "orange", "value": 6 },
+              { "color": "red", "value": 8 }
+            ]
+          },
+          "unit": "cent"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "id": 7,
+      "options": {
+        "legend": { "calcs": ["mean", "min", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"comed_price\")\n  |> filter(fn: (r) => r._field == \"price_cents_kwh\")\n  |> filter(fn: (r) => r.price_type == \"5min\")\n  |> aggregateWindow(every: 1h, fn: mean, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Hourly Price (per kWh)",
+      "description": "ComEd hourly pricing in cents. Example: 4.5¢ = $0.045 per kWh",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 30,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "insertNulls": false,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "kwatth"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 14 },
+      "id": 8,
+      "options": {
+        "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "right", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"twc_vitals\")\n  |> filter(fn: (r) => r._field == \"session_energy_wh\")\n  |> filter(fn: (r) => r.charger_id =~ /${charger}/)\n  |> difference(nonNegative: true)\n  |> aggregateWindow(every: 1d, fn: sum, createEmpty: true)\n  |> map(fn: (r) => ({r with _value: r._value / 1000.0}))\n  |> cumulativeSum()\n  |> keep(columns: [\"_time\", \"_value\", \"charger_id\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Cumulative Energy (kWh)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "description": "Best charging times based on lowest average prices",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "custom": { "align": "auto", "cellOptions": { "type": "auto" }, "inspect": false },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 4 },
+              { "color": "red", "value": 8 }
+            ]
+          }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Hour" }, "properties": [{ "id": "custom.width", "value": 100 }] },
+          { "matcher": { "id": "byName", "options": "Avg Price (¢/kWh)" }, "properties": [{ "id": "custom.cellOptions", "value": { "type": "color-background" } }] }
+        ]
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 22 },
+      "id": 9,
+      "options": {
+        "cellHeight": "sm",
+        "footer": { "countRows": false, "fields": "", "reducer": ["sum"], "show": false },
+        "showHeader": true,
+        "sortBy": [{ "desc": false, "displayName": "Avg Price (¢/kWh)" }]
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "import \"date\"\n\nfrom(bucket: \"twc_dashboard\")\n  |> range(start: -7d)\n  |> filter(fn: (r) => r._measurement == \"comed_price\")\n  |> filter(fn: (r) => r._field == \"price_cents_kwh\")\n  |> filter(fn: (r) => r.price_type == \"5min\")\n  |> map(fn: (r) => ({r with hour: date.hour(t: r._time)}))\n  |> group(columns: [\"hour\"])\n  |> mean()\n  |> group()\n  |> sort(columns: [\"_value\"])\n  |> map(fn: (r) => ({r with Hour: if r.hour == 0 then \"12 AM\" else if r.hour < 12 then string(v: r.hour) + \" AM\" else if r.hour == 12 then \"12 PM\" else string(v: r.hour - 12) + \" PM\"}))\n  |> rename(columns: {_value: \"Avg Price (¢/kWh)\"})\n  |> keep(columns: [\"Hour\", \"Avg Price (¢/kWh)\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Best Charging Hours (7-day avg)",
+      "type": "table"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 4 },
+              { "color": "orange", "value": 6 },
+              { "color": "red", "value": 8 }
+            ]
+          },
+          "unit": "cent",
+          "decimals": 1,
+          "custom": {
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineWidth": 1
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 16, "x": 8, "y": 22 },
+      "id": 10,
+      "options": {
+        "barRadius": 0.1,
+        "barWidth": 0.8,
+        "groupWidth": 0.7,
+        "legend": { "calcs": [], "displayMode": "hidden", "placement": "bottom", "showLegend": false },
+        "orientation": "horizontal",
+        "showValue": "always",
+        "stacking": "none",
+        "tooltip": { "mode": "single", "sort": "none" },
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 0,
+        "colorByField": "_value"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "import \"date\"\n\nfrom(bucket: \"twc_dashboard\")\n  |> range(start: -7d)\n  |> filter(fn: (r) => r._measurement == \"comed_price\")\n  |> filter(fn: (r) => r._field == \"price_cents_kwh\")\n  |> filter(fn: (r) => r.price_type == \"5min\")\n  |> map(fn: (r) => ({r with hour: date.hour(t: r._time)}))\n  |> group(columns: [\"hour\"])\n  |> mean()\n  |> group()\n  |> sort(columns: [\"hour\"])\n  |> map(fn: (r) => ({_time: r._time, _value: r._value, _field: if r.hour == 0 then \"12AM\" else if r.hour < 12 then string(v: r.hour) + \"AM\" else if r.hour == 12 then \"12PM\" else string(v: r.hour - 12) + \"PM\"}))\n  |> keep(columns: [\"_value\", \"_field\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Avg Price by Hour (7-day)",
+      "type": "barchart"
+    }
+  ],
+  "refresh": "5m",
+  "schemaVersion": 38,
+  "tags": ["tesla", "ev", "charging", "costs"],
+  "templating": {
+    "list": [
+      {
+        "current": { "selected": false, "text": "InfluxDB", "value": "InfluxDB" },
+        "hide": 0,
+        "includeAll": false,
+        "multi": false,
+        "name": "datasource",
+        "options": [],
+        "query": "influxdb",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      },
+      {
+        "current": {},
+        "datasource": { "type": "influxdb", "uid": "${datasource}" },
+        "definition": "import \"influxdata/influxdb/schema\"\nschema.tagValues(bucket: \"twc_dashboard\", tag: \"charger_id\")",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Charger",
+        "multi": true,
+        "name": "charger",
+        "options": [],
+        "query": "import \"influxdata/influxdb/schema\"\nschema.tagValues(bucket: \"twc_dashboard\", tag: \"charger_id\")",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      }
+    ]
+  },
+  "time": { "from": "now-7d", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Energy & Costs",
+  "uid": "twc-energy-costs",
+  "version": 1,
+  "weekStart": ""
+}

@@ -1,0 +1,23 @@
+apiVersion: 1
+
+providers:
+  - name: 'TWC Dashboards'
+    orgId: 1
+    folder: 'Tesla Wall Connector'
+    folderUid: 'twc'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
+  - name: 'Legacy Dashboards'
+    orgId: 1
+    folder: 'Legacy'
+    folderUid: 'legacy'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards-legacy

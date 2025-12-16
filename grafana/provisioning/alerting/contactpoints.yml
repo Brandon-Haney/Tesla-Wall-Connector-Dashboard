@@ -1,0 +1,61 @@
+apiVersion: 1
+
+# Contact points for TWC Dashboard alerts
+# Configure these with your preferred notification method
+# See: https://grafana.com/docs/grafana/latest/alerting/configure-notifications/manage-contact-points/
+
+contactPoints: []
+  # Uncomment and configure a contact point for notifications:
+  #
+  # Email (requires Grafana SMTP configuration)
+  # - orgId: 1
+  #   name: email-alerts
+  #   receivers:
+  #     - uid: email-receiver
+  #       type: email
+  #       settings:
+  #         addresses: "your-email@example.com"
+  #         singleEmail: true
+  #       disableResolveMessage: false
+
+  # Uncomment and configure one of these for external notifications:
+
+  # Discord Webhook
+  # - orgId: 1
+  #   name: discord
+  #   receivers:
+  #     - uid: discord-webhook
+  #       type: discord
+  #       settings:
+  #         url: "YOUR_DISCORD_WEBHOOK_URL"
+  #         use_discord_username: true
+
+  # Slack Webhook
+  # - orgId: 1
+  #   name: slack
+  #   receivers:
+  #     - uid: slack-webhook
+  #       type: slack
+  #       settings:
+  #         url: "YOUR_SLACK_WEBHOOK_URL"
+  #         recipient: "#alerts"
+
+  # Pushover (mobile push notifications)
+  # - orgId: 1
+  #   name: pushover
+  #   receivers:
+  #     - uid: pushover
+  #       type: pushover
+  #       settings:
+  #         userKey: "YOUR_PUSHOVER_USER_KEY"
+  #         apiToken: "YOUR_PUSHOVER_API_TOKEN"
+
+  # Telegram
+  # - orgId: 1
+  #   name: telegram
+  #   receivers:
+  #     - uid: telegram
+  #       type: telegram
+  #       settings:
+  #         bottoken: "YOUR_BOT_TOKEN"
+  #         chatid: "YOUR_CHAT_ID"

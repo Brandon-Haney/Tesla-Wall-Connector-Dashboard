@@ -1,0 +1,5 @@
+from(bucket: "twc_dashboard")
+  |> range(start: -1h)
+  |> filter(fn: (r) => r._measurement == "comed_price")
+  |> filter(fn: (r) => r.price_type == "hourly_avg")
+  |> last()

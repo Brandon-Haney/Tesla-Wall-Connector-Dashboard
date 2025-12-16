@@ -1,0 +1,1775 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": true,
+  "panels": [
+    {
+      "gridPos": { "h": 2, "w": 24, "x": 0, "y": 0 },
+      "id": 1,
+      "options": {
+        "content": "# Tesla Vehicle Status\nReal-time vehicle data from Tessie API. Select a vehicle from the dropdown above.",
+        "mode": "markdown"
+      },
+      "title": "",
+      "transparent": true,
+      "type": "text"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 0,
+          "mappings": [],
+          "max": 100,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 20 },
+              { "color": "yellow", "value": 40 },
+              { "color": "green", "value": 60 }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 4, "x": 0, "y": 2 },
+      "id": 2,
+      "options": {
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true
+      },
+      "pluginVersion": "10.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"tesla_vehicle\")\n  |> filter(fn: (r) => r._field == \"battery_level\")\n  |> filter(fn: (r) => r.display_name != \"\")\n  |> filter(fn: (r) => r.display_name =~ /${vehicle:regex}/)\n  |> last()\n  |> keep(columns: [\"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Battery Level",
+      "type": "gauge"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 0,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 50 },
+              { "color": "yellow", "value": 100 },
+              { "color": "green", "value": 150 }
+            ]
+          },
+          "unit": "lengthmi"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 4, "x": 4, "y": 2 },
+      "id": 3,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"tesla_vehicle\")\n  |> filter(fn: (r) => r._field == \"battery_range\")\n  |> filter(fn: (r) => r.display_name != \"\")\n  |> filter(fn: (r) => r.display_name =~ /${vehicle:regex}/)\n  |> last()\n  |> keep(columns: [\"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Range",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [
+            { "options": { "Charging": { "color": "green", "index": 0, "text": "Charging" } }, "type": "value" },
+            { "options": { "Complete": { "color": "blue", "index": 1, "text": "Complete" } }, "type": "value" },
+            { "options": { "Disconnected": { "color": "text", "index": 2, "text": "Disconnected" } }, "type": "value" },
+            { "options": { "Stopped": { "color": "orange", "index": 3, "text": "Stopped" } }, "type": "value" },
+            { "options": { "NoPower": { "color": "red", "index": 4, "text": "No Power" } }, "type": "value" }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "text", "value": null }]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 4, "x": 8, "y": 2 },
+      "id": 4,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": [], "fields": "/_value/", "values": true },
+        "textMode": "value"
+      },
+      "pluginVersion": "10.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"tesla_vehicle\")\n  |> filter(fn: (r) => r._field == \"charging_state\")\n  |> filter(fn: (r) => r.display_name != \"\")\n  |> filter(fn: (r) => r.display_name =~ /${vehicle:regex}/)\n  |> last()\n  |> keep(columns: [\"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Charging State",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [
+            { "options": { "online": { "color": "green", "index": 0, "text": "Online" } }, "type": "value" },
+            { "options": { "asleep": { "color": "blue", "index": 1, "text": "Asleep" } }, "type": "value" },
+            { "options": { "offline": { "color": "red", "index": 2, "text": "Offline" } }, "type": "value" },
+            { "options": { "driving": { "color": "yellow", "index": 3, "text": "Driving" } }, "type": "value" },
+            { "options": { "charging": { "color": "super-light-green", "index": 4, "text": "Charging" } }, "type": "value" }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "text", "value": null }]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 4, "x": 8, "y": 5 },
+      "id": 5,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": [], "fields": "/_value/", "values": true },
+        "textMode": "value"
+      },
+      "pluginVersion": "10.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"tesla_vehicle\")\n  |> filter(fn: (r) => r._field == \"state\")\n  |> filter(fn: (r) => r.display_name != \"\")\n  |> filter(fn: (r) => r.display_name =~ /${vehicle:regex}/)\n  |> last()\n  |> keep(columns: [\"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Vehicle State",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 1,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 5 },
+              { "color": "orange", "value": 8 },
+              { "color": "red", "value": 11 }
+            ]
+          },
+          "unit": "kwatt"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 2, "x": 12, "y": 2 },
+      "id": 6,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"tesla_vehicle\")\n  |> filter(fn: (r) => r._field == \"charger_power\")\n  |> filter(fn: (r) => r.display_name != \"\")\n  |> filter(fn: (r) => r.display_name =~ /${vehicle:regex}/)\n  |> last()\n  |> keep(columns: [\"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Charging Power",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 0,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "text", "value": null },
+              { "color": "orange", "value": 1 },
+              { "color": "yellow", "value": 24 },
+              { "color": "green", "value": 32 }
+            ]
+          },
+          "unit": "amp"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 2, "x": 14, "y": 2 },
+      "id": 50,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"tesla_vehicle\")\n  |> filter(fn: (r) => r._field == \"charge_amps\")\n  |> filter(fn: (r) => r.display_name != \"\")\n  |> filter(fn: (r) => r.display_name =~ /${vehicle:regex}/)\n  |> last()\n  |> keep(columns: [\"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Amps",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 2,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }]
+          },
+          "unit": "kwatth"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 2, "x": 16, "y": 2 },
+      "id": 7,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"tesla_vehicle\")\n  |> filter(fn: (r) => r._field == \"charge_energy_added\")\n  |> filter(fn: (r) => r.display_name != \"\")\n  |> filter(fn: (r) => r.display_name =~ /${vehicle:regex}/)\n  |> last()\n  |> keep(columns: [\"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Energy Added",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 1,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }]
+          },
+          "unit": "h"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 3, "x": 12, "y": 5 },
+      "id": 8,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"tesla_vehicle\")\n  |> filter(fn: (r) => r._field == \"time_to_full_charge\")\n  |> filter(fn: (r) => r.display_name != \"\")\n  |> filter(fn: (r) => r.display_name =~ /${vehicle:regex}/)\n  |> last()\n  |> keep(columns: [\"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Time to Full",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 0,
+          "mappings": [],
+          "max": 100,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "blue", "value": null }]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 3, "x": 15, "y": 5 },
+      "id": 9,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"tesla_vehicle\")\n  |> filter(fn: (r) => r._field == \"charge_limit_soc\")\n  |> filter(fn: (r) => r.display_name != \"\")\n  |> filter(fn: (r) => r.display_name =~ /${vehicle:regex}/)\n  |> last()\n  |> keep(columns: [\"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Charge Limit",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 1,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "blue", "value": null },
+              { "color": "green", "value": 59 },
+              { "color": "yellow", "value": 95 },
+              { "color": "red", "value": 113 }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 3, "x": 18, "y": 2 },
+      "id": 10,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: -24h)\n  |> filter(fn: (r) => r._measurement == \"tesla_vehicle\")\n  |> filter(fn: (r) => r._field == \"inside_temp\")\n  |> filter(fn: (r) => r.display_name != \"\")\n  |> filter(fn: (r) => r.display_name =~ /${vehicle:regex}/)\n  |> last()\n  |> map(fn: (r) => ({r with _value: if \"${temp_unit}\" == \"F\" then r._value * 9.0/5.0 + 32.0 else r._value}))\n  |> keep(columns: [\"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Inside Temp (${temp_unit:text})",
+      "description": "Interior temperature from vehicle sensors. Shows cached data when car is asleep.",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 1,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "blue", "value": null },
+              { "color": "green", "value": 50 },
+              { "color": "yellow", "value": 86 },
+              { "color": "red", "value": 104 }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 3, "x": 21, "y": 2 },
+      "id": 11,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: -24h)\n  |> filter(fn: (r) => r._measurement == \"tesla_vehicle\")\n  |> filter(fn: (r) => r._field == \"outside_temp\")\n  |> filter(fn: (r) => r.display_name != \"\")\n  |> filter(fn: (r) => r.display_name =~ /${vehicle:regex}/)\n  |> last()\n  |> map(fn: (r) => ({r with _value: if \"${temp_unit}\" == \"F\" then r._value * 9.0/5.0 + 32.0 else r._value}))\n  |> keep(columns: [\"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Outside Temp (${temp_unit:text})",
+      "description": "Exterior temperature from vehicle sensors. Shows cached data when car is asleep.",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "text", "value": null }]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 3, "x": 18, "y": 5 },
+      "id": 12,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": [], "fields": "/_value/", "values": true },
+        "textMode": "value"
+      },
+      "pluginVersion": "10.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"tesla_vehicle\")\n  |> filter(fn: (r) => r._field == \"car_version\")\n  |> filter(fn: (r) => r.display_name != \"\")\n  |> filter(fn: (r) => r.display_name =~ /${vehicle:regex}/)\n  |> last()\n  |> keep(columns: [\"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Software Version",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 0,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "text", "value": null }]
+          },
+          "unit": "lengthmi"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 3, "x": 21, "y": 5 },
+      "id": 13,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"tesla_vehicle\")\n  |> filter(fn: (r) => r._field == \"odometer\")\n  |> filter(fn: (r) => r.display_name != \"\")\n  |> filter(fn: (r) => r.display_name =~ /${vehicle:regex}/)\n  |> last()\n  |> keep(columns: [\"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Odometer",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 20,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "insertNulls": false,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "decimals": 0,
+          "mappings": [],
+          "max": 100,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 20 },
+              { "color": "yellow", "value": 40 },
+              { "color": "green", "value": 60 }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "id": 14,
+      "options": {
+        "legend": { "calcs": ["lastNotNull", "min", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"tesla_vehicle\")\n  |> filter(fn: (r) => r._field == \"battery_level\")\n  |> filter(fn: (r) => r.display_name != \"\")\n  |> filter(fn: (r) => r.display_name =~ /${vehicle:regex}/)\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\", \"display_name\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Battery Level Over Time",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 20,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "insertNulls": false,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "decimals": 1,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }]
+          },
+          "unit": "kwatt"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "id": 15,
+      "options": {
+        "legend": { "calcs": ["lastNotNull", "max", "mean"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"tesla_vehicle\")\n  |> filter(fn: (r) => r._field == \"charger_power\")\n  |> filter(fn: (r) => r.display_name != \"\")\n  |> filter(fn: (r) => r.display_name =~ /${vehicle:regex}/)\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\", \"display_name\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Charging Power Over Time",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "insertNulls": false,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "decimals": 0,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }]
+          },
+          "unit": "lengthmi"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "id": 16,
+      "options": {
+        "legend": { "calcs": ["lastNotNull", "min", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"tesla_vehicle\")\n  |> filter(fn: (r) => r._field == \"battery_range\")\n  |> filter(fn: (r) => r.display_name != \"\")\n  |> filter(fn: (r) => r.display_name =~ /${vehicle:regex}/)\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\", \"display_name\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Range Over Time",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "${temp_unit:text}",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "insertNulls": false,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "decimals": 1,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "id": 17,
+      "options": {
+        "legend": { "calcs": ["lastNotNull", "min", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"tesla_vehicle\")\n  |> filter(fn: (r) => r._field == \"inside_temp\" or r._field == \"outside_temp\")\n  |> filter(fn: (r) => r.display_name != \"\")\n  |> filter(fn: (r) => r.display_name =~ /${vehicle:regex}/)\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> map(fn: (r) => ({r with _value: if \"${temp_unit}\" == \"F\" then r._value * 9.0/5.0 + 32.0 else r._value}))\n  |> keep(columns: [\"_time\", \"_value\", \"_field\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Temperatures Over Time",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [
+            { "options": { "1": { "color": "green", "index": 0, "text": "Yes" }, "0": { "color": "text", "index": 1, "text": "No" } }, "type": "value" },
+            { "options": { "match": "true", "result": { "color": "green", "index": 2, "text": "Yes" } }, "type": "special" },
+            { "options": { "match": "false", "result": { "color": "text", "index": 3, "text": "No" } }, "type": "special" }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "text", "value": null }]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 3, "x": 0, "y": 24 },
+      "id": 18,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"tesla_vehicle\")\n  |> filter(fn: (r) => r._field == \"is_connected\")\n  |> filter(fn: (r) => r.display_name != \"\")\n  |> filter(fn: (r) => r.display_name =~ /${vehicle:regex}/)\n  |> last()\n  |> map(fn: (r) => ({r with _value: if r._value then 1 else 0}))\n  |> keep(columns: [\"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Plugged In",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [
+            { "options": { "1": { "color": "yellow", "index": 0, "text": "Active" }, "0": { "color": "text", "index": 1, "text": "Off" } }, "type": "value" },
+            { "options": { "match": "true", "result": { "color": "yellow", "index": 2, "text": "Active" } }, "type": "special" },
+            { "options": { "match": "false", "result": { "color": "text", "index": 3, "text": "Off" } }, "type": "special" }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "text", "value": null }]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 3, "x": 3, "y": 24 },
+      "id": 19,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"tesla_vehicle\")\n  |> filter(fn: (r) => r._field == \"is_preconditioning\")\n  |> filter(fn: (r) => r.display_name != \"\")\n  |> filter(fn: (r) => r.display_name =~ /${vehicle:regex}/)\n  |> last()\n  |> map(fn: (r) => ({r with _value: if r._value then 1 else 0}))\n  |> keep(columns: [\"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Preconditioning",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [
+            { "options": { "1": { "color": "orange", "index": 0, "text": "Active" }, "0": { "color": "text", "index": 1, "text": "Off" } }, "type": "value" },
+            { "options": { "match": "true", "result": { "color": "orange", "index": 2, "text": "Active" } }, "type": "special" },
+            { "options": { "match": "false", "result": { "color": "text", "index": 3, "text": "Off" } }, "type": "special" }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "text", "value": null }]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 3, "x": 6, "y": 24 },
+      "id": 20,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"tesla_vehicle\")\n  |> filter(fn: (r) => r._field == \"battery_heater\")\n  |> filter(fn: (r) => r.display_name != \"\")\n  |> filter(fn: (r) => r.display_name =~ /${vehicle:regex}/)\n  |> last()\n  |> map(fn: (r) => ({r with _value: if r._value then 1 else 0}))\n  |> keep(columns: [\"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Battery Heater",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [
+            { "options": { "1": { "color": "red", "index": 0, "text": "Yes" }, "0": { "color": "text", "index": 1, "text": "No" } }, "type": "value" },
+            { "options": { "match": "true", "result": { "color": "red", "index": 2, "text": "Yes" } }, "type": "special" },
+            { "options": { "match": "false", "result": { "color": "text", "index": 3, "text": "No" } }, "type": "special" }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "text", "value": null }]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 3, "x": 9, "y": 24 },
+      "id": 21,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"tesla_vehicle\")\n  |> filter(fn: (r) => r._field == \"fast_charger_present\")\n  |> filter(fn: (r) => r.display_name != \"\")\n  |> filter(fn: (r) => r.display_name =~ /${vehicle:regex}/)\n  |> last()\n  |> map(fn: (r) => ({r with _value: if r._value then 1 else 0}))\n  |> keep(columns: [\"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "DC Fast Charger",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [
+            { "options": { "<invalid>": { "color": "text", "index": 0, "text": "Not Connected" } }, "type": "value" },
+            { "options": { "SAE": { "color": "green", "index": 1, "text": "Wall Connector" } }, "type": "value" },
+            { "options": { "IEC": { "color": "blue", "index": 2, "text": "IEC (EU)" } }, "type": "value" }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "text", "value": null }]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 3, "x": 12, "y": 24 },
+      "id": 22,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": [], "fields": "/_value/", "values": true },
+        "textMode": "value"
+      },
+      "pluginVersion": "10.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"tesla_vehicle\")\n  |> filter(fn: (r) => r._field == \"conn_charge_cable\")\n  |> filter(fn: (r) => r.display_name != \"\")\n  |> filter(fn: (r) => r.display_name =~ /${vehicle:regex}/)\n  |> last()\n  |> keep(columns: [\"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Cable Type",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 0,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "text", "value": null }]
+          },
+          "unit": "amp"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 3, "x": 15, "y": 24 },
+      "id": 23,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"tesla_vehicle\")\n  |> filter(fn: (r) => r._field == \"charge_amps\")\n  |> filter(fn: (r) => r.display_name != \"\")\n  |> filter(fn: (r) => r.display_name =~ /${vehicle:regex}/)\n  |> last()\n  |> keep(columns: [\"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Charge Amps",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 0,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "text", "value": null }]
+          },
+          "unit": "volt"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 3, "x": 18, "y": 24 },
+      "id": 24,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"tesla_vehicle\")\n  |> filter(fn: (r) => r._field == \"charger_voltage\")\n  |> filter(fn: (r) => r.display_name != \"\")\n  |> filter(fn: (r) => r.display_name =~ /${vehicle:regex}/)\n  |> last()\n  |> keep(columns: [\"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Charger Voltage",
+      "type": "stat"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 27 },
+      "id": 50,
+      "panels": [],
+      "title": "Fleet Charging Sessions",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 2,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }]
+          },
+          "unit": "kwatth"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 4, "x": 0, "y": 28 },
+      "id": 51,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"fleet_charge_session\")\n  |> filter(fn: (r) => r._field == \"energy_kwh\")\n  |> filter(fn: (r) => r.vehicle_name != \"\")\n  |> filter(fn: (r) => r.vehicle_name =~ /${vehicle:regex}/)\n  |> last()\n  |> keep(columns: [\"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Last Session Energy",
+      "description": "Energy delivered in the most recent charging session (from Fleet API)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 0,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "blue", "value": null }]
+          },
+          "unit": "m"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 4, "x": 4, "y": 28 },
+      "id": 52,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"fleet_charge_session\")\n  |> filter(fn: (r) => r._field == \"duration_min\")\n  |> filter(fn: (r) => r.vehicle_name != \"\")\n  |> filter(fn: (r) => r.vehicle_name =~ /${vehicle:regex}/)\n  |> last()\n  |> keep(columns: [\"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Last Session Duration",
+      "description": "Duration of the most recent charging session",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 1,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "orange", "value": null }]
+          },
+          "unit": "kwatt"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 4, "x": 8, "y": 28 },
+      "id": 53,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"fleet_charge_session\")\n  |> filter(fn: (r) => r._field == \"avg_power_kw\")\n  |> filter(fn: (r) => r.vehicle_name != \"\")\n  |> filter(fn: (r) => r.vehicle_name =~ /${vehicle:regex}/)\n  |> last()\n  |> keep(columns: [\"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Last Session Avg Power",
+      "description": "Average power during the most recent charging session",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 0,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "purple", "value": null }]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 4, "x": 12, "y": 28 },
+      "id": 54,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: -7d)\n  |> filter(fn: (r) => r._measurement == \"fleet_charge_session\")\n  |> filter(fn: (r) => r._field == \"energy_kwh\")\n  |> filter(fn: (r) => r.vehicle_name != \"\")\n  |> filter(fn: (r) => r.vehicle_name =~ /${vehicle:regex}/)\n  |> count()\n  |> keep(columns: [\"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Sessions (7 Days)",
+      "description": "Number of charging sessions in the last 7 days",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 1,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }]
+          },
+          "unit": "kwatth"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 4, "x": 16, "y": 28 },
+      "id": 56,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["sum"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: -7d)\n  |> filter(fn: (r) => r._measurement == \"fleet_charge_session\")\n  |> filter(fn: (r) => r._field == \"energy_kwh\")\n  |> filter(fn: (r) => r.vehicle_name != \"\")\n  |> filter(fn: (r) => r.vehicle_name =~ /${vehicle:regex}/)\n  |> keep(columns: [\"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Energy (7 Days)",
+      "description": "Total energy delivered in the last 7 days",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Energy (kWh)",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "decimals": 1,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null }
+            ]
+          },
+          "unit": "kwatth"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 4, "x": 20, "y": 28 },
+      "id": 55,
+      "options": {
+        "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": false },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "pluginVersion": "10.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"fleet_charge_session\")\n  |> filter(fn: (r) => r._field == \"energy_kwh\")\n  |> filter(fn: (r) => r.vehicle_name != \"\")\n  |> filter(fn: (r) => r.vehicle_name =~ /${vehicle:regex}/)\n  |> keep(columns: [\"_time\", \"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Session Energy",
+      "description": "Energy per charging session over time",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 34 },
+      "id": 60,
+      "panels": [],
+      "title": "Vehicle Session History",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "custom": {
+            "align": "auto",
+            "cellOptions": { "type": "auto" },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "text", "value": null }]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "_time" },
+            "properties": [
+              { "id": "displayName", "value": "Start Time" },
+              { "id": "custom.width", "value": 160 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "energy_added_kwh" },
+            "properties": [
+              { "id": "displayName", "value": "Energy Added" },
+              { "id": "unit", "value": "kwatth" },
+              { "id": "decimals", "value": 2 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "duration_min" },
+            "properties": [
+              { "id": "displayName", "value": "Duration" },
+              { "id": "unit", "value": "m" },
+              { "id": "decimals", "value": 0 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "starting_battery_level" },
+            "properties": [
+              { "id": "displayName", "value": "Start %" },
+              { "id": "unit", "value": "percent" }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "ending_battery_level" },
+            "properties": [
+              { "id": "displayName", "value": "End %" },
+              { "id": "unit", "value": "percent" }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "soc_gained" },
+            "properties": [
+              { "id": "displayName", "value": "SOC Gained" },
+              { "id": "unit", "value": "percent" }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "peak_power_kw" },
+            "properties": [
+              { "id": "displayName", "value": "Peak Power" },
+              { "id": "unit", "value": "kwatt" },
+              { "id": "decimals", "value": 1 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "charger_type" },
+            "properties": [
+              { "id": "displayName", "value": "Charger" }
+            ]
+          }
+        ]
+      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 35 },
+      "id": 61,
+      "options": {
+        "cellHeight": "sm",
+        "footer": { "countRows": false, "fields": "", "reducer": ["sum"], "show": false },
+        "showHeader": true,
+        "sortBy": [{ "desc": true, "displayName": "Start Time" }]
+      },
+      "pluginVersion": "10.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"tesla_session\")\n  |> filter(fn: (r) => r.display_name != \"\")\n  |> filter(fn: (r) => r.display_name =~ /${vehicle:regex}/)\n  |> pivot(rowKey: [\"_time\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> keep(columns: [\"_time\", \"charger_type\", \"energy_added_kwh\", \"duration_min\", \"starting_battery_level\", \"ending_battery_level\", \"soc_gained\", \"peak_power_kw\"])\n  |> sort(columns: [\"_time\"], desc: true)\n  |> limit(n: 20)",
+          "refId": "A"
+        }
+      ],
+      "title": "Recent Vehicle Charging Sessions",
+      "description": "Charging sessions tracked from the vehicle's perspective",
+      "type": "table"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 43 },
+      "id": 70,
+      "panels": [],
+      "title": "Smart Charging",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "description": "DRY-RUN: Actions logged but not sent to vehicle. LIVE: Actions sent to vehicle.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [
+            { "options": { "match": "true", "result": { "color": "green", "index": 0, "text": "LIVE" } }, "type": "special" },
+            { "options": { "match": "false", "result": { "color": "yellow", "index": 1, "text": "DRY-RUN" } }, "type": "special" },
+            { "options": { "1": { "color": "green", "index": 2, "text": "LIVE" } }, "type": "value" },
+            { "options": { "0": { "color": "yellow", "index": 3, "text": "DRY-RUN" } }, "type": "value" }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "yellow", "value": null }]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 3, "x": 0, "y": 44 },
+      "id": 78,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "value"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"smart_charging_state\")\n  |> filter(fn: (r) => r._field == \"control_enabled\")\n  |> filter(fn: (r) => r.display_name != \"\")\n  |> filter(fn: (r) => r.display_name =~ /${vehicle:regex}/)\n  |> last()\n  |> map(fn: (r) => ({r with _value: if r._value then 1 else 0}))\n  |> keep(columns: [\"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Mode",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "description": "Current smart charging status. would_pause = DRY-RUN detected price spike but did not send command.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [
+            { "options": { "charging": { "color": "green", "index": 0, "text": "Charging" } }, "type": "value" },
+            { "options": { "paused_by_price": { "color": "orange", "index": 1, "text": "Paused (Price)" } }, "type": "value" },
+            { "options": { "not_charging": { "color": "blue", "index": 2, "text": "Not Charging" } }, "type": "value" },
+            { "options": { "unknown": { "color": "dark-gray", "index": 3, "text": "Unknown" } }, "type": "value" },
+            { "options": { "would_pause": { "color": "yellow", "index": 4, "text": "Would Pause (DRY-RUN)" } }, "type": "value" }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "text", "value": null }]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 3, "y": 44 },
+      "id": 71,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": [], "fields": "/_value/", "values": true },
+        "textMode": "value"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"smart_charging_state\")\n  |> filter(fn: (r) => r._field == \"status\")\n  |> filter(fn: (r) => r.display_name != \"\")\n  |> filter(fn: (r) => r.display_name =~ /${vehicle:regex}/)\n  |> last()\n  |> keep(columns: [\"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Smart Charging Status",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "description": "Where current price falls in the 30-day distribution",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 0,
+          "mappings": [],
+          "max": 100,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 50 },
+              { "color": "orange", "value": 75 },
+              { "color": "red", "value": 90 }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 3, "x": 7, "y": 44 },
+      "id": 72,
+      "options": {
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "showThresholdLabels": true,
+        "showThresholdMarkers": true
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"smart_charging_state\")\n  |> filter(fn: (r) => r._field == \"current_percentile\")\n  |> filter(fn: (r) => r.display_name != \"\")\n  |> filter(fn: (r) => r.display_name =~ /${vehicle:regex}/)\n  |> last()\n  |> keep(columns: [\"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Price Percentile",
+      "type": "gauge"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "description": "Current electricity price",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 2,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 4 },
+              { "color": "orange", "value": 6 },
+              { "color": "red", "value": 8 }
+            ]
+          },
+          "unit": "cent"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 10, "y": 44 },
+      "id": 73,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "value"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"comed_price\")\n  |> filter(fn: (r) => r._field == \"price_cents_kwh\")\n  |> filter(fn: (r) => r.price_type == \"5min\")\n  |> last()\n  |> keep(columns: [\"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Real-Time Price",
+      "description": "Current 5-minute price from ComEd",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "description": "Price threshold for stopping charging (90th percentile)",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "red" },
+          "decimals": 2,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "text", "value": null }]
+          },
+          "unit": "cent"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 14, "y": 44 },
+      "id": 74,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "value"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"smart_charging_state\")\n  |> filter(fn: (r) => r._field == \"stop_threshold_cents\")\n  |> filter(fn: (r) => r.display_name != \"\")\n  |> filter(fn: (r) => r.display_name =~ /${vehicle:regex}/)\n  |> last()\n  |> keep(columns: [\"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Stop Threshold (90th %ile)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "description": "Price threshold for resuming charging (75th percentile)",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "green" },
+          "decimals": 2,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "text", "value": null }]
+          },
+          "unit": "cent"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 3, "x": 18, "y": 44 },
+      "id": 75,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "value"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"smart_charging_state\")\n  |> filter(fn: (r) => r._field == \"resume_threshold_cents\")\n  |> filter(fn: (r) => r.display_name != \"\")\n  |> filter(fn: (r) => r.display_name =~ /${vehicle:regex}/)\n  |> last()\n  |> keep(columns: [\"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Resume Threshold (75th %ile)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "description": "Days of price history used for statistics calculation",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 0,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 7 },
+              { "color": "green", "value": 20 }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 3, "x": 21, "y": 44 },
+      "id": 76,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "value"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"smart_charging_state\")\n  |> filter(fn: (r) => r._field == \"days_of_data\")\n  |> filter(fn: (r) => r.display_name != \"\")\n  |> filter(fn: (r) => r.display_name =~ /${vehicle:regex}/)\n  |> last()\n  |> keep(columns: [\"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Price History (Days)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "description": "Recent smart charging interventions",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "custom": {
+            "align": "auto",
+            "cellOptions": { "type": "auto" },
+            "filterable": false,
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "text", "value": null }]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Time" },
+            "properties": [
+              { "id": "custom.width", "value": 160 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Action" },
+            "properties": [
+              { "id": "custom.width", "value": 180 },
+              { "id": "mappings", "value": [
+                { "options": { "start": { "color": "green", "index": 0, "text": "▶ RESUME" } }, "type": "value" },
+                { "options": { "stop": { "color": "red", "index": 1, "text": "⏸ STOP" } }, "type": "value" },
+                { "options": { "start_simulated": { "color": "yellow", "index": 2, "text": "▶ RESUME (DRY-RUN)" } }, "type": "value" },
+                { "options": { "stop_simulated": { "color": "orange", "index": 3, "text": "⏸ STOP (DRY-RUN)" } }, "type": "value" }
+              ]}
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Price" },
+            "properties": [
+              { "id": "unit", "value": "cent" },
+              { "id": "decimals", "value": 2 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Percentile" },
+            "properties": [
+              { "id": "unit", "value": "percent" }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Threshold" },
+            "properties": [
+              { "id": "unit", "value": "cent" },
+              { "id": "decimals", "value": 2 }
+            ]
+          }
+        ]
+      },
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 48 },
+      "id": 77,
+      "options": {
+        "cellHeight": "sm",
+        "footer": { "countRows": false, "fields": "", "reducer": ["sum"], "show": false },
+        "showHeader": true,
+        "sortBy": [{ "desc": true, "displayName": "Time" }]
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"smart_charging_actions\")\n  |> filter(fn: (r) => r.display_name != \"\")\n  |> filter(fn: (r) => r.display_name =~ /${vehicle:regex}/)\n  |> pivot(rowKey: [\"_time\", \"action\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> map(fn: (r) => ({Time: r._time, Action: r.action, Percentile: r.percentile, Price: r.price_cents, Threshold: r.threshold_cents}))\n  |> sort(columns: [\"Time\"], desc: true)\n  |> limit(n: 20)",
+          "refId": "A"
+        }
+      ],
+      "title": "Smart Charging Actions Log",
+      "type": "table"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 38,
+  "tags": ["tesla", "ev", "vehicle", "tessie"],
+  "templating": {
+    "list": [
+      {
+        "current": { "selected": false, "text": "InfluxDB", "value": "InfluxDB" },
+        "hide": 0,
+        "includeAll": false,
+        "multi": false,
+        "name": "datasource",
+        "options": [],
+        "query": "influxdb",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      },
+      {
+        "current": {},
+        "datasource": { "type": "influxdb", "uid": "${datasource}" },
+        "definition": "import \"influxdata/influxdb/schema\"\nschema.tagValues(bucket: \"twc_dashboard\", tag: \"display_name\", predicate: (r) => r._measurement == \"tesla_vehicle\")",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Vehicle",
+        "multi": true,
+        "name": "vehicle",
+        "options": [],
+        "query": "import \"influxdata/influxdb/schema\"\nschema.tagValues(bucket: \"twc_dashboard\", tag: \"display_name\", predicate: (r) => r._measurement == \"tesla_vehicle\")",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": { "selected": true, "text": "°F", "value": "F" },
+        "hide": 0,
+        "includeAll": false,
+        "label": "Temp Unit",
+        "multi": false,
+        "name": "temp_unit",
+        "options": [
+          { "selected": true, "text": "°F", "value": "F" },
+          { "selected": false, "text": "°C", "value": "C" }
+        ],
+        "query": "F : °F, C : °C",
+        "skipUrlSync": false,
+        "type": "custom"
+      }
+    ]
+  },
+  "time": { "from": "now-6h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Vehicle Status",
+  "uid": "twc-vehicle-status",
+  "version": 1,
+  "weekStart": ""
+}

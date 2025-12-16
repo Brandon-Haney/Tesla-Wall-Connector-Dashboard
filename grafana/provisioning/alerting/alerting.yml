@@ -1,0 +1,295 @@
+apiVersion: 1
+
+# Alert rules for Tesla Wall Connector Dashboard
+# These alerts are provisioned automatically on Grafana startup
+
+groups:
+  - orgId: 1
+    name: TWC Alerts
+    folder: Tesla Wall Connector
+    interval: 1m
+    rules:
+      # Low Price Alert - Good time to charge
+      - uid: twc-low-price-alert
+        title: Low Electricity Price
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: influxdb
+            model:
+              query: |
+                from(bucket: "twc_dashboard")
+                  |> range(start: -5m)
+                  |> filter(fn: (r) => r._measurement == "comed_price")
+                  |> filter(fn: (r) => r._field == "price_cents_kwh")
+                  |> filter(fn: (r) => r.price_type == "hourly_avg")
+                  |> last()
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params: []
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - B
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 3
+                    type: lt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - C
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              expression: B
+              refId: C
+              type: threshold
+        noDataState: NoData
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: "Electricity price is low - good time to charge!"
+          description: "Current ComEd price is {{ $values.B }}¢/kWh (below 3¢/kWh threshold)"
+        labels:
+          severity: info
+          type: pricing
+
+      # High Price Alert - Avoid charging
+      - uid: twc-high-price-alert
+        title: High Electricity Price
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: influxdb
+            model:
+              query: |
+                from(bucket: "twc_dashboard")
+                  |> range(start: -5m)
+                  |> filter(fn: (r) => r._measurement == "comed_price")
+                  |> filter(fn: (r) => r._field == "price_cents_kwh")
+                  |> filter(fn: (r) => r.price_type == "hourly_avg")
+                  |> last()
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 8
+                    type: gt
+              expression: B
+              refId: C
+              type: threshold
+        noDataState: NoData
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: "Electricity price is high - avoid charging if possible"
+          description: "Current ComEd price is {{ $values.B }}¢/kWh (above 8¢/kWh threshold)"
+        labels:
+          severity: warning
+          type: pricing
+
+      # Charger Offline Alert
+      - uid: twc-charger-offline-alert
+        title: Wall Connector Offline
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: influxdb
+            model:
+              query: |
+                from(bucket: "twc_dashboard")
+                  |> range(start: -10m)
+                  |> filter(fn: (r) => r._measurement == "twc_vitals")
+                  |> filter(fn: (r) => r._field == "uptime_s")
+                  |> count()
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 1
+                    type: lt
+              expression: B
+              refId: C
+              type: threshold
+        noDataState: Alerting
+        execErrState: Alerting
+        for: 5m
+        annotations:
+          summary: "Wall Connector is not responding"
+          description: "No data received from Wall Connector in the last 10 minutes. Check network connectivity."
+        labels:
+          severity: critical
+          type: connectivity
+
+      # Charging Session Complete
+      - uid: twc-session-complete-alert
+        title: Charging Session Complete
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: influxdb
+            model:
+              query: |
+                from(bucket: "twc_dashboard")
+                  |> range(start: -5m)
+                  |> filter(fn: (r) => r._measurement == "twc_session")
+                  |> filter(fn: (r) => r._field == "energy_kwh")
+                  |> count()
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 0
+                    type: gt
+              expression: B
+              refId: C
+              type: threshold
+        noDataState: NoData
+        execErrState: Error
+        for: 0s
+        annotations:
+          summary: "Charging session completed"
+          description: "A charging session has finished. Check the Session History dashboard for details."
+        labels:
+          severity: info
+          type: session
+
+      # High Temperature Alert
+      - uid: twc-high-temp-alert
+        title: High Charger Temperature
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: influxdb
+            model:
+              query: |
+                from(bucket: "twc_dashboard")
+                  |> range(start: -5m)
+                  |> filter(fn: (r) => r._measurement == "twc_vitals")
+                  |> filter(fn: (r) => r._field == "handle_temp_c" or r._field == "pcba_temp_c")
+                  |> last()
+                  |> max()
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: max
+              refId: B
+              type: reduce
+          - refId: C
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 60
+                    type: gt
+              expression: B
+              refId: C
+              type: threshold
+        noDataState: NoData
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: "Wall Connector temperature is high"
+          description: "Charger temperature is {{ $values.B }}°C (above 60°C threshold). This may indicate thermal throttling."
+        labels:
+          severity: warning
+          type: hardware

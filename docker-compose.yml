@@ -1,0 +1,139 @@
+version: "3.8"
+
+services:
+  # InfluxDB - Time Series Database
+  influxdb:
+    image: influxdb:2.7
+    container_name: twc-influxdb
+    restart: unless-stopped
+    ports:
+      - "8086:8086"
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=${INFLUXDB_ADMIN_USER:-admin}
+      - DOCKER_INFLUXDB_INIT_PASSWORD=${INFLUXDB_ADMIN_PASSWORD:-changeme}
+      - DOCKER_INFLUXDB_INIT_ORG=${INFLUXDB_ORG:-home}
+      - DOCKER_INFLUXDB_INIT_BUCKET=${INFLUXDB_BUCKET:-twc_dashboard}
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=${INFLUXDB_ADMIN_TOKEN:-twc-dashboard-token}
+      - TZ=${TZ:-America/Chicago}
+    volumes:
+      - influxdb-data:/var/lib/influxdb2
+      - influxdb-config:/etc/influxdb2
+    healthcheck:
+      test: ["CMD", "influx", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Grafana - Dashboard & Visualization
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: twc-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-changeme}
+      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-piechart-panel
+      - GF_UNIFIED_ALERTING_ENABLED=true
+      - GF_ALERTING_ENABLED=false
+      - GF_DATE_FORMATS_DEFAULT_TIMEZONE=browser
+      - GF_DATE_FORMATS_FULL_DATE=MMM D, YYYY h:mm:ss a
+      - GF_DATE_FORMATS_INTERVAL_SECOND=h:mm:ss a
+      - GF_DATE_FORMATS_INTERVAL_MINUTE=h:mm a
+      - GF_DATE_FORMATS_INTERVAL_HOUR=MMM D h:mm a
+      - GF_DATE_FORMATS_INTERVAL_DAY=MMM D
+      - GF_DATE_FORMATS_INTERVAL_MONTH=MMM YYYY
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/var/lib/grafana/dashboards/home-charging.json
+      - INFLUXDB_TOKEN=${INFLUXDB_ADMIN_TOKEN:-changeme_influxdb_token}
+      - TZ=${TZ:-America/Chicago}
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ./grafana/dashboards-legacy:/var/lib/grafana/dashboards-legacy:ro
+    depends_on:
+      influxdb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # TWC Collector - Polls Wall Connectors and ComEd, writes to InfluxDB
+  collector:
+    build:
+      context: ./collector
+      dockerfile: Dockerfile
+    container_name: twc-collector
+    restart: unless-stopped
+    environment:
+      - INFLUXDB_URL=http://influxdb:8086
+      - INFLUXDB_TOKEN=${INFLUXDB_ADMIN_TOKEN:-twc-dashboard-token}
+      - INFLUXDB_ORG=${INFLUXDB_ORG:-home}
+      - INFLUXDB_BUCKET=${INFLUXDB_BUCKET:-twc_dashboard}
+      - TWC_CHARGERS=${TWC_CHARGERS:-garage:192.168.1.100}
+      - TWC_UNIT_NAMES=${TWC_UNIT_NAMES:-}
+      - VEHICLE_NAMES=${VEHICLE_NAMES:-}
+      - TARGET_ID_VEHICLES=${TARGET_ID_VEHICLES:-}
+      - FLEET_ENERGY_SITE_ID=${FLEET_ENERGY_SITE_ID:-}
+      - FLEET_TWC_POLL_INTERVAL=${FLEET_TWC_POLL_INTERVAL:-30}
+      - COMED_DELIVERY_PER_KWH=${COMED_DELIVERY_PER_KWH:-0.075}
+      - TWC_POLL_VITALS_INTERVAL=${TWC_POLL_VITALS_INTERVAL:-5}
+      - TWC_POLL_LIFETIME_INTERVAL=${TWC_POLL_LIFETIME_INTERVAL:-60}
+      - TWC_POLL_VERSION_INTERVAL=${TWC_POLL_VERSION_INTERVAL:-300}
+      - TWC_POLL_WIFI_INTERVAL=${TWC_POLL_WIFI_INTERVAL:-60}
+      - COMED_ENABLED=${COMED_ENABLED:-true}
+      - COMED_POLL_INTERVAL=${COMED_POLL_INTERVAL:-300}
+      - TESSIE_ENABLED=${TESSIE_ENABLED:-false}
+      - TESSIE_POLL_INTERVAL=${TESSIE_POLL_INTERVAL:-60}
+      - SMART_CHARGING_ENABLED=${SMART_CHARGING_ENABLED:-false}
+      - SMART_CHARGING_CONTROL_ENABLED=${SMART_CHARGING_CONTROL_ENABLED:-false}
+      - SMART_CHARGING_LOOKBACK_DAYS=${SMART_CHARGING_LOOKBACK_DAYS:-30}
+      - SMART_CHARGING_STOP_PERCENTILE=${SMART_CHARGING_STOP_PERCENTILE:-90}
+      - SMART_CHARGING_RESUME_PERCENTILE=${SMART_CHARGING_RESUME_PERCENTILE:-75}
+      - SMART_CHARGING_MIN_INTERVAL=${SMART_CHARGING_MIN_INTERVAL:-600}
+      - TZ=${TZ:-America/Chicago}
+    volumes:
+      # Mount secrets file (contains Tessie API token, etc.)
+      # Create .secrets from .secrets.example and add your tokens
+      - ./.secrets:/app/.secrets:ro
+    depends_on:
+      influxdb:
+        condition: service_healthy
+    # Network mode host allows access to local network devices
+    # Comment out if running on Linux and use extra_hosts instead
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # TWC Dashboard API - REST API and WebSocket for data access
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: twc-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - INFLUXDB_URL=http://influxdb:8086
+      - INFLUXDB_TOKEN=${INFLUXDB_ADMIN_TOKEN:-twc-dashboard-token}
+      - INFLUXDB_ORG=${INFLUXDB_ORG:-home}
+      - INFLUXDB_BUCKET=${INFLUXDB_BUCKET:-twc_dashboard}
+      - COMED_DELIVERY_PER_KWH=7.5
+      - TZ=${TZ:-America/Chicago}
+    depends_on:
+      influxdb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  influxdb-data:
+  influxdb-config:
+  grafana-data:
