@@ -5,13 +5,15 @@ A real-time monitoring dashboard for Tesla Wall Connector Gen 3 chargers with Co
 ## Features
 
 - **Real-time Monitoring**: Live power draw, voltage, current, and temperature data
-- **Multi-Charger Support**: Monitor multiple Wall Connectors in one dashboard
+- **Multi-Charger Support**: Monitor multiple Wall Connectors in one dashboard (via Fleet API)
 - **ComEd Hourly Pricing**: Live electricity pricing with cost calculations
 - **Session Tracking**: Automatic detection and logging of charging sessions with real-time cost tracking
 - **Full Cost Estimation**: Includes supply + delivery rates for accurate cost calculations (based on ComEd bill analysis)
 - **Real-time Session Cost**: See charging costs accumulate during active sessions using actual prices
 - **Cost Analysis**: Hourly, daily, weekly, and monthly cost breakdowns
 - **Optimal Charging**: Identify the cheapest times to charge
+- **Smart Charging**: Automatic pause/resume based on electricity prices (optional)
+- **Vehicle Integration**: Battery level, charging state, and vehicle data via Tessie
 - **REST API**: Programmatic access to all data with export capabilities
 - **Data Export**: CSV, JSON, and PDF report generation
 
@@ -22,12 +24,13 @@ A real-time monitoring dashboard for Tesla Wall Connector Gen 3 chargers with Co
 - Docker and Docker Compose
 - Tesla Wall Connector Gen 3 on your local network
 - ComEd Hourly Pricing customer (for accurate pricing)
+- **[Tessie](https://tessie.com)** account (required for Fleet API features - see below)
 
 ### Installation
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/yourusername/Tesla-Wall-Connector-Dashboard.git
+   git clone https://github.com/Brandon-Haney/Tesla-Wall-Connector-Dashboard.git
    cd Tesla-Wall-Connector-Dashboard
    ```
 
@@ -96,6 +99,45 @@ COMED_MONTHLY_FIXED=19.56
 
 You can also adjust the `delivery_rate` variable directly in the Grafana dashboards without restarting services.
 
+## Tessie Integration
+
+This project uses **[Tessie](https://tessie.com)** to access Tesla's Fleet API. Tessie provides a clean API layer over Tesla's infrastructure with better reliability and documentation.
+
+### Why Tessie?
+
+- **Fleet API Access**: See ALL Wall Connectors (leader + followers in power-sharing setups)
+- **Session History**: Get charging session data with energy, duration, and vehicle info
+- **Vehicle Data**: Battery level, charging state, temperatures
+- **Smart Charging**: Control charging based on electricity prices
+- **Reliable API**: Better uptime and error handling than direct Tesla API
+
+### What Works Without Tessie?
+
+| Feature | Without Tessie | With Tessie |
+|---------|---------------|-------------|
+| Local TWC monitoring (leader only) | Yes | Yes |
+| ComEd pricing | Yes | Yes |
+| Basic session tracking | Yes | Yes |
+| **All Wall Connectors** (followers) | No | Yes |
+| **Session history** | Limited | Yes |
+| **Vehicle battery/state** | No | Yes |
+| **Smart charging control** | No | Yes |
+
+### Setup
+
+1. Create a [Tessie account](https://tessie.com) and link your Tesla
+2. Get your API token from [dash.tessie.com/settings/api](https://dash.tessie.com/settings/api)
+3. Add token to `.secrets` file:
+   ```
+   TESSIE_ACCESS_TOKEN=your_token_here
+   ```
+4. Enable in `.env`:
+   ```
+   TESSIE_ENABLED=true
+   ```
+
+> **Note**: Tessie Pro provides unlimited API polling. The free tier has rate limits that may affect real-time monitoring.
+
 ## Architecture
 
 ```
@@ -104,12 +146,20 @@ You can also adjust the `delivery_rate` variable directly in the Grafana dashboa
 │    (Python)     │     │  (Time-Series)  │     │   (Dashboard)   │
 └────────┬────────┘     └─────────────────┘     └────────┬────────┘
          │                       ▲                       │
-    ┌────┴────┐                  │                       │
-    ▼         ▼                  │                       │
-┌───────┐  ┌───────┐     ┌──────┴────────┐              │
-│  TWC  │  │ ComEd │     │   REST API    │──────────────┘
-│  API  │  │  API  │     │   (FastAPI)   │  Export: CSV/JSON/PDF
-└───────┘  └───────┘     └───────────────┘  WebSocket: Real-time
+    ┌────┼────────┬──────┐      │                       │
+    ▼    ▼        ▼      ▼      │                       │
+┌───────┐ ┌───────┐ ┌────────┐ ┌┴──────────────┐        │
+│  TWC  │ │ ComEd │ │ Tessie │ │   REST API    │────────┘
+│ (local)│ │  API  │ │  API   │ │   (FastAPI)   │
+└───────┘ └───────┘ └────┬───┘ └───────────────┘
+                         │
+                         ▼
+              ┌─────────────────────┐
+              │  Tesla Fleet API    │
+              │  - All Wall Connectors
+              │  - Vehicle Data     │
+              │  - Session History  │
+              └─────────────────────┘
 ```
 
 ## Dashboards
