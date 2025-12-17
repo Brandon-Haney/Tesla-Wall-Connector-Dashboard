@@ -17,7 +17,7 @@ SSH into your Unraid server or use the terminal:
 
 ```bash
 cd /mnt/user/appdata
-git clone https://github.com/YOUR_USERNAME/Tesla-Wall-Connector-Dashboard.git twc-dashboard
+git clone https://github.com/Brandon-Haney/Tesla-Wall-Connector-Dashboard.git twc-dashboard
 cd twc-dashboard
 ```
 
@@ -41,9 +41,6 @@ TWC_CHARGERS=garage:192.168.1.100
 INFLUXDB_ADMIN_PASSWORD=your_secure_password_here
 INFLUXDB_ADMIN_TOKEN=your_secure_token_here
 GRAFANA_ADMIN_PASSWORD=your_secure_password_here
-
-# Your GitHub username (for pulling images)
-GITHUB_USERNAME=your_github_username
 
 # Your timezone
 TZ=America/Chicago
@@ -233,9 +230,9 @@ docker compose -f docker-compose.unraid.yml restart
 - Look for auth errors in collector logs
 
 **Images not pulling**
-- Ensure `GITHUB_USERNAME` is set correctly in `.env`
 - Check that GitHub Actions has run and published images
-- Images must be public or you need `docker login ghcr.io`
+- Verify images exist at ghcr.io/brandon-haney/twc-dashboard-collector
+- Images are public, no login required
 
 ---
 
