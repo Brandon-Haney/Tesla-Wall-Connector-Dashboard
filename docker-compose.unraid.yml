@@ -77,9 +77,8 @@ services:
       retries: 3
 
   # TWC Collector - Pre-built image from GHCR
-  # Replace YOUR_GITHUB_USERNAME with your actual GitHub username after forking
   collector:
-    image: ghcr.io/${GITHUB_USERNAME:-your-username}/twc-dashboard-collector:latest
+    image: ghcr.io/${GITHUB_USERNAME:-brandon-haney}/twc-dashboard-collector:latest
     container_name: twc-collector
     restart: unless-stopped
     environment:
@@ -119,7 +118,7 @@ services:
 
   # TWC Dashboard API - Pre-built image from GHCR
   api:
-    image: ghcr.io/${GITHUB_USERNAME:-your-username}/twc-dashboard-api:latest
+    image: ghcr.io/${GITHUB_USERNAME:-brandon-haney}/twc-dashboard-api:latest
     container_name: twc-api
     restart: unless-stopped
     ports:
