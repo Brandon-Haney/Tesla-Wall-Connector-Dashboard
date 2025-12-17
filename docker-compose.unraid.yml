@@ -12,8 +12,6 @@
 #
 # Or enable Watchtower (included below) for automatic updates
 
-version: "3.8"
-
 services:
   # InfluxDB - Time Series Database
   influxdb:
