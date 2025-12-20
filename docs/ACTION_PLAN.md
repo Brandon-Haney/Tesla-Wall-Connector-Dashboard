@@ -794,6 +794,226 @@ Use real-time `live_status` power integration to build session records immediate
 
 ---
 
+### Phase 4.6: ComEd Opower Integration (Meter Data) - IN PROGRESS
+
+**Goal:** Fetch actual electricity usage and cost data from ComEd's Opower portal to compare against our calculated charging costs.
+
+#### Why Opower Integration?
+
+Currently we only have:
+- **ComEd Hourly Pricing API** - Real-time supply prices (what we pay per kWh)
+- **Wall Connector Energy** - How much energy we used for charging
+
+With Opower integration we get:
+- **Actual billed usage** - Total home electricity consumption (not just EV charging)
+- **Actual billed costs** - Real costs from ComEd including all fees
+- **Historical data** - 30-minute interval data back to June 2023
+- **Weather correlation** - Temperature data to correlate with usage
+- **Bill history** - Actual billed amounts with charge breakdowns
+- **Neighbor comparison** - How usage compares to similar homes
+
+This enables:
+- Comparing EV charging costs vs total electricity costs
+- Understanding what percentage of electricity goes to EV charging
+- Validating our cost calculations against actual bills
+- Historical usage analysis and trends
+- HVAC analysis with temperature correlation
+
+#### Why Custom Solution (Not opower Library)
+
+The [tronikos/opower](https://github.com/tronikos/opower) library uses ComEd's mobile app OAuth flow (`B2C_1A_SignIn_Mobile`), which ComEd has **disabled** - returns 400 Bad Request.
+
+| Factor | opower Library | Custom Solution |
+|--------|----------------|-----------------|
+| **OAuth Flow** | Mobile (`B2C_1A_SignIn_Mobile`) | Web (`B2C_1A_SignIn`) |
+| **Status** | ❌ 400 Error | ✅ Working |
+| **API** | REST (DataBrowser-v1) | GraphQL (more data) |
+| **Data Resolution** | Daily | 30-minute intervals |
+| **Extra Data** | Usage only | Weather, bills, neighbors |
+
+**Decision:** Use custom web OAuth solution with GraphQL API for richer data.
+
+**Related Issues:**
+- [home-assistant/core#134050](https://github.com/home-assistant/core/issues/134050) - ComEd login fails
+
+#### Implementation Status
+
+##### Step 4.6.1: Authentication & API Discovery - COMPLETE ✅
+- [x] Analyzed browser HAR file to reverse-engineer auth flow
+- [x] Implemented 10-step Azure AD B2C web OAuth flow
+- [x] MFA support (email or SMS)
+- [x] Session cookie caching for token refresh without MFA
+- [x] Discovered 8 GraphQL endpoints via HAR analysis
+- [x] Documented all endpoints in `docs/COMED_OPOWER_API.md`
+
+##### Step 4.6.2: Test Script & Daemon - COMPLETE ✅
+- [x] Created `scripts/comed_auth.py` - Full authentication + data fetch
+- [x] Token caching with session cookies (`.comed_token_cache.json`)
+- [x] Daemon mode for continuous operation (`--daemon`)
+- [x] Test mode for session keep-alive validation (`--test`)
+- [x] Debug mode for troubleshooting (`--debug`)
+- [x] Successfully retrieving:
+  - Daily/hourly usage data (30-min resolution available)
+  - Daily cost data (actual billed costs)
+  - Account metadata (rate plan, timezone, data range)
+
+##### Step 4.6.3: Collector Integration - COMPLETE ✅
+- [x] Create `collector/src/opower_client.py` wrapper
+  - Implemented Azure AD B2C authentication flow
+  - Load/save session cache from `.secrets` directory
+  - Handle token refresh automatically
+  - Fetch data at configurable intervals
+- [x] Add new InfluxDB measurements:
+  - `comed_meter_usage` - Actual electricity usage from meter
+  - `comed_meter_cost` - Actual electricity costs (includes all fees)
+  - `comed_bill` - Monthly bill summaries
+- [x] Add configuration options to `.env` and `config.py`:
+  - `OPOWER_ENABLED` - Enable/disable meter data integration
+  - `OPOWER_POLL_INTERVAL` - Fetch interval (default 3600s)
+  - `OPOWER_MFA_METHOD` - email or sms
+- [x] Add credentials support in `.secrets`:
+  - `COMED_USERNAME` / `COMED_PASSWORD` for credential-based auth
+  - `COMED_BEARER_TOKEN` for pre-authenticated token mode
+- [x] Integrate polling loop in collector `main.py`:
+  - Initial bootstrap fetches 30 days of daily usage/cost + 12 months of bills
+  - Incremental polling fetches new data daily
+  - Handles authentication failures gracefully
+
+##### Step 4.6.4: Dashboard Integration - PLANNED
+- [ ] Add "Home Usage" section to Energy & Costs dashboard
+  - Total home usage vs EV charging usage
+  - EV charging as percentage of total
+  - Actual costs vs estimated costs comparison
+- [ ] Create "Billing Comparison" panel
+  - Compare our calculated costs vs actual Opower costs
+  - Show any discrepancies (helps tune delivery_rate)
+- [ ] Add temperature correlation panel
+  - Usage vs temperature chart
+  - Identify HVAC impact on bills
+- [ ] Add historical usage trends
+  - Daily/weekly/monthly home consumption
+  - Year-over-year comparison
+
+##### Step 4.6.5: First-Time Setup Flow - COMPLETE ✅
+- [x] Document MFA setup process in `docs/COMED_OPOWER_SETUP.md`
+- [x] Interactive setup wizard: `scripts/comed_opower_setup.py`
+  - `--test` mode to verify configuration
+  - `--status` mode to show current setup state
+  - `--force` mode to re-authenticate
+  - `--mfa-method` option for SMS or email
+  - Runs locally (not in Docker) for easier MFA interaction
+- [x] Store credentials securely in `.secrets` (updated `.secrets.example` with clear instructions)
+- [x] Handle session expiry gracefully in collector
+  - Clear error messages with prominent `====` banners
+  - Exact fix instructions in error logs
+  - Automatic cache migration from old location
+- [x] Hot-reload cache file detection
+  - Collector checks for cache file every 30 seconds when not authenticated
+  - Auto-initializes Opower when cache file is detected (no restart needed)
+  - Logs clear success message when cache is loaded
+- [x] Token keep-alive mechanism
+  - Refreshes token every 10 minutes (configurable via `OPOWER_TOKEN_REFRESH_INTERVAL`)
+  - Warns when token is close to expiry
+  - Logs prominent errors if refresh fails
+
+#### Files Created/Modified
+
+**Created Files:**
+- `scripts/comed_auth.py` - Main authentication + data fetch script
+- `scripts/.comed_token_cache.json` - Cached token + session cookies (gitignored)
+- `docs/COMED_OPOWER_API.md` - Complete API reference documentation
+
+**Files to Create (Collector Integration):**
+- `collector/src/comed_client.py` - Client wrapper for collector
+- `collector/src/config.py` - Add COMED_OPOWER_* config options
+
+**Files to Modify:**
+- `collector/src/main.py` - Add Opower polling to main loop
+- `grafana/dashboards/energy-costs.json` - Add usage/cost panels
+
+#### Available GraphQL Endpoints
+
+| Endpoint | Status | Description |
+|----------|--------|-------------|
+| `WDB_GetMetadata` | ✅ Implemented | Rate plan, timezone, data range |
+| `WDB_GetCostReadsForDayAndHour` | ✅ Implemented | Daily/hourly cost + usage |
+| `WDB_GetUsageReadsForDayAndHourWithIntervalReads` | 🔲 TODO | 30-min intervals, peak periods |
+| `WDB_GetWeather` | 🔲 TODO | Daily min/max/mean temperature |
+| `WDB_GetCostUsageReadsForBills` | 🔲 TODO | Bill history with charge breakdowns |
+| `WDB_GetNeighborComparisons` | 🔲 TODO | Compare vs similar neighbors |
+| `WBAS_BillingAccounts` | 🔲 TODO | Full account details |
+| `GetUsageInfo` (REST) | 🔲 TODO | Monthly summaries with YoY comparison |
+
+See `docs/COMED_OPOWER_API.md` for complete endpoint documentation.
+
+#### Key Technical Details
+
+**Authentication Flow (10 Steps)**
+1. Load ComEd login page → redirects to Azure B2C
+2. Submit credentials
+3. Confirm credentials
+4. Select MFA method (email/SMS)
+5. Confirm MFA selection
+6. Send MFA code
+7. User enters MFA code
+8. Verify MFA code
+9. Complete login → redirects to ComEd with OAuth code
+10. Get Opower bearer token
+
+**Session Persistence**
+- Token cached in `.comed_token_cache.json`
+- Includes 6 essential session cookies for token refresh
+- Token lifetime: ~20 minutes
+- Session can be refreshed without MFA while cookies valid
+
+**Data Characteristics**
+- Data delay: 24-48 hours
+- Resolution: 30-minute intervals (HALF_HOUR)
+- Historical data: Back to June 2023
+- Rate plan: C-H70R (ComEd hourly pricing)
+
+#### Sample Output
+
+```
+============================================================
+COMED OPOWER AUTHENTICATION
+============================================================
+Username: user@example.com
+MFA Method: email
+
+Restored 6 session cookies
+Using cached token (expires 2025-12-18 20:33:34)
+
+Fetching data...
+
+--- Usage Data (Last 7 Days) ---
+  2025-12-12: 67.03 kWh
+  2025-12-13: 36.03 kWh
+  2025-12-14: 80.39 kWh
+  2025-12-15: 34.58 kWh
+  2025-12-16: 105.19 kWh
+  2025-12-17: 49.63 kWh
+  TOTAL: 372.85 kWh
+
+--- Cost Data (Last 7 Days) ---
+  2025-12-12: 67.03 kWh, $8.62
+  2025-12-13: 36.03 kWh, $4.04
+  2025-12-14: 80.39 kWh, $9.94
+  2025-12-15: 34.58 kWh, $5.27
+  2025-12-16: 105.19 kWh, $10.75
+  2025-12-17: 49.63 kWh, $0.00
+  TOTAL: $45.87
+
+--- Account Metadata ---
+  Rate Plan: C-H70R
+  Resolution: HALF_HOUR
+  Timezone: America/Chicago
+```
+
+**Note:** Costs from Opower include all fees (supply, delivery, taxes) - this is the "true" cost that appears on your bill.
+
+---
+
 ### Phase 5: Advanced Features (Future) - NOT STARTED
 
 #### Step 5.1: Charging Optimization

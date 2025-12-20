@@ -7,7 +7,11 @@ from influxdb_client import InfluxDBClient, Point, WritePrecision
 from influxdb_client.client.write_api import SYNCHRONOUS
 
 from .config import settings, ChargerConfig
-from .models import TWCVitals, TWCLifetime, TWCVersion, TWCWifiStatus, ComEdPrice, TessieVehicle, VehicleChargingSession, FleetWallConnector, FleetChargeSession, TessieCharge
+from .models import (
+    TWCVitals, TWCLifetime, TWCVersion, TWCWifiStatus, ComEdPrice,
+    TessieVehicle, VehicleChargingSession, FleetWallConnector, FleetChargeSession, TessieCharge,
+    OpowerUsageRead, OpowerCostRead, OpowerBillSummary
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1355,3 +1359,248 @@ class InfluxWriter:
             f"with telemetry energy: {energy_kwh_from_telemetry:.2f} kWh"
         )
         return True
+
+    # =========================================================================
+    # ComEd Opower Data (Phase 4.6 - Meter Data Integration)
+    # =========================================================================
+
+    def write_opower_usage(self, usage: OpowerUsageRead):
+        """Write Opower usage data to InfluxDB.
+
+        This is actual metered usage from the smart meter, which matches
+        what appears on your ComEd bill.
+
+        Args:
+            usage: OpowerUsageRead with timestamp, kwh, and resolution
+        """
+        try:
+            point = (
+                Point("comed_meter_usage")
+                .tag("resolution", usage.resolution)
+                .field("kwh", usage.kwh)
+                .field("wh", usage.wh)
+                .time(usage.timestamp, WritePrecision.S)
+            )
+
+            self.write_api.write(bucket=self.bucket, org=self.org, record=point)
+            logger.debug(f"Wrote Opower usage: {usage.kwh:.2f} kWh ({usage.resolution})")
+
+        except Exception as e:
+            logger.error(f"Error writing Opower usage: {e}")
+
+    def write_opower_usage_batch(self, usage_reads: List[OpowerUsageRead]):
+        """Write multiple Opower usage readings to InfluxDB.
+
+        Args:
+            usage_reads: List of OpowerUsageRead objects
+        """
+        try:
+            points = []
+            for usage in usage_reads:
+                point = (
+                    Point("comed_meter_usage")
+                    .tag("resolution", usage.resolution)
+                    .field("kwh", usage.kwh)
+                    .field("wh", usage.wh)
+                    .time(usage.timestamp, WritePrecision.S)
+                )
+                points.append(point)
+
+            if points:
+                self.write_api.write(bucket=self.bucket, org=self.org, record=points)
+                logger.info(f"Wrote {len(points)} Opower usage readings to InfluxDB")
+
+        except Exception as e:
+            logger.error(f"Error writing Opower usage batch: {e}")
+
+    def write_opower_cost(self, cost: OpowerCostRead):
+        """Write Opower cost data to InfluxDB.
+
+        This is the actual billed cost from ComEd, including all fees,
+        delivery charges, and taxes.
+
+        Args:
+            cost: OpowerCostRead with timestamp, kwh, cost, and resolution
+        """
+        try:
+            point = (
+                Point("comed_meter_cost")
+                .tag("resolution", cost.resolution)
+                .field("kwh", cost.kwh)
+                .field("cost_dollars", cost.cost_dollars)
+                .field("cost_cents", cost.cost_cents)
+                .field("effective_rate_cents", cost.effective_rate_cents)
+                .time(cost.timestamp, WritePrecision.S)
+            )
+
+            self.write_api.write(bucket=self.bucket, org=self.org, record=point)
+            logger.debug(
+                f"Wrote Opower cost: {cost.kwh:.2f} kWh, ${cost.cost_dollars:.2f} "
+                f"({cost.effective_rate_cents:.2f}¢/kWh)"
+            )
+
+        except Exception as e:
+            logger.error(f"Error writing Opower cost: {e}")
+
+    def write_opower_cost_batch(self, cost_reads: List[OpowerCostRead]):
+        """Write multiple Opower cost readings to InfluxDB.
+
+        Args:
+            cost_reads: List of OpowerCostRead objects
+        """
+        try:
+            points = []
+            for cost in cost_reads:
+                point = (
+                    Point("comed_meter_cost")
+                    .tag("resolution", cost.resolution)
+                    .field("kwh", cost.kwh)
+                    .field("cost_dollars", cost.cost_dollars)
+                    .field("cost_cents", cost.cost_cents)
+                    .field("effective_rate_cents", cost.effective_rate_cents)
+                    .time(cost.timestamp, WritePrecision.S)
+                )
+                points.append(point)
+
+            if points:
+                self.write_api.write(bucket=self.bucket, org=self.org, record=points)
+                logger.info(f"Wrote {len(points)} Opower cost readings to InfluxDB")
+
+        except Exception as e:
+            logger.error(f"Error writing Opower cost batch: {e}")
+
+    def write_opower_bill(self, bill: OpowerBillSummary):
+        """Write Opower bill summary to InfluxDB.
+
+        Monthly bill summary with breakdown of charges.
+
+        Args:
+            bill: OpowerBillSummary with bill details
+        """
+        try:
+            if not bill.bill_date:
+                logger.warning("Bill has no date, skipping")
+                return
+
+            point = (
+                Point("comed_bill")
+                .tag("estimated", str(bill.is_estimated).lower())
+                .field("total_kwh", bill.total_kwh)
+                .field("total_cost_dollars", bill.total_cost_dollars)
+                .field("usage_charges_dollars", bill.usage_charges_dollars)
+                .field("non_usage_charges_dollars", bill.non_usage_charges_dollars)
+                .field("effective_rate_cents", bill.effective_rate_cents)
+                .time(bill.bill_date, WritePrecision.S)
+            )
+
+            self.write_api.write(bucket=self.bucket, org=self.org, record=point)
+            logger.info(
+                f"Wrote Opower bill: {bill.total_kwh:.0f} kWh, ${bill.total_cost_dollars:.2f} "
+                f"({bill.effective_rate_cents:.2f}¢/kWh all-in)"
+            )
+
+        except Exception as e:
+            logger.error(f"Error writing Opower bill: {e}")
+
+    def write_opower_bills_batch(self, bills: List[OpowerBillSummary]):
+        """Write multiple Opower bill summaries to InfluxDB.
+
+        Args:
+            bills: List of OpowerBillSummary objects
+        """
+        for bill in bills:
+            self.write_opower_bill(bill)
+
+    def get_latest_opower_usage_time(self, resolution: str = "DAY") -> Optional[datetime]:
+        """Get the timestamp of the most recent Opower usage data.
+
+        Used to determine the starting point for incremental fetching.
+
+        Args:
+            resolution: Data resolution ("DAY", "HOUR", "HALF_HOUR")
+
+        Returns:
+            Datetime of the most recent usage, or None if no data
+        """
+        try:
+            query = f'''
+            from(bucket: "{self.bucket}")
+                |> range(start: -365d)
+                |> filter(fn: (r) => r["_measurement"] == "comed_meter_usage")
+                |> filter(fn: (r) => r["resolution"] == "{resolution}")
+                |> filter(fn: (r) => r["_field"] == "kwh")
+                |> last()
+                |> keep(columns: ["_time"])
+            '''
+
+            tables = self.query_api.query(query, org=self.org)
+
+            for table in tables:
+                for record in table.records:
+                    return record.get_time()
+
+            return None
+
+        except Exception as e:
+            logger.error(f"Error getting latest Opower usage time: {e}")
+            return None
+
+    def get_latest_opower_cost_time(self, resolution: str = "DAY") -> Optional[datetime]:
+        """Get the timestamp of the most recent Opower cost data.
+
+        Args:
+            resolution: Data resolution ("DAY", "HOUR")
+
+        Returns:
+            Datetime of the most recent cost data, or None if no data
+        """
+        try:
+            query = f'''
+            from(bucket: "{self.bucket}")
+                |> range(start: -365d)
+                |> filter(fn: (r) => r["_measurement"] == "comed_meter_cost")
+                |> filter(fn: (r) => r["resolution"] == "{resolution}")
+                |> filter(fn: (r) => r["_field"] == "kwh")
+                |> last()
+                |> keep(columns: ["_time"])
+            '''
+
+            tables = self.query_api.query(query, org=self.org)
+
+            for table in tables:
+                for record in table.records:
+                    return record.get_time()
+
+            return None
+
+        except Exception as e:
+            logger.error(f"Error getting latest Opower cost time: {e}")
+            return None
+
+    def get_latest_opower_bill_time(self) -> Optional[datetime]:
+        """Get the timestamp of the most recent Opower bill.
+
+        Returns:
+            Datetime of the most recent bill, or None if no data
+        """
+        try:
+            query = f'''
+            from(bucket: "{self.bucket}")
+                |> range(start: -730d)
+                |> filter(fn: (r) => r["_measurement"] == "comed_bill")
+                |> filter(fn: (r) => r["_field"] == "total_kwh")
+                |> last()
+                |> keep(columns: ["_time"])
+            '''
+
+            tables = self.query_api.query(query, org=self.org)
+
+            for table in tables:
+                for record in table.records:
+                    return record.get_time()
+
+            return None
+
+        except Exception as e:
+            logger.error(f"Error getting latest Opower bill time: {e}")
+            return None

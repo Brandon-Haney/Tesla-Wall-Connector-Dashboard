@@ -21,47 +21,9 @@ git clone https://github.com/Brandon-Haney/Tesla-Wall-Connector-Dashboard.git tw
 cd twc-dashboard
 ```
 
-### 2. Configure Environment
+### 2. Deploy
 
-```bash
-# Copy example files
-cp .env.example .env
-cp .secrets.example .secrets
-
-# Edit configuration
-nano .env
-```
-
-**Required settings in `.env`:**
-```env
-# Your Wall Connector IP address
-TWC_CHARGERS=garage:192.168.1.100
-
-# Secure passwords (change these!)
-INFLUXDB_ADMIN_PASSWORD=your_secure_password_here
-INFLUXDB_ADMIN_TOKEN=your_secure_token_here
-GRAFANA_ADMIN_PASSWORD=your_secure_password_here
-
-# Your timezone
-TZ=America/Chicago
-```
-
-**For Tessie/Fleet API features**, edit `.secrets`:
-```bash
-nano .secrets
-```
-
-Add your Tessie token:
-```
-TESSIE_ACCESS_TOKEN=your_tessie_token_here
-```
-
-Then enable in `.env`:
-```env
-TESSIE_ENABLED=true
-```
-
-### 3. Deploy
+On first run, secure random passwords and tokens are **automatically generated** and saved to `.env`.
 
 **Option A: Using Docker Compose Manager (Recommended)**
 
@@ -78,9 +40,58 @@ cd /mnt/user/appdata/twc-dashboard
 docker compose -f docker-compose.unraid.yml up -d
 ```
 
-### 4. Access Your Dashboard
+### 3. Get Your Login Credentials
 
-- **Grafana**: http://YOUR_UNRAID_IP:3000
+After first run, view your auto-generated passwords:
+
+```bash
+grep -E "(GRAFANA_ADMIN_PASSWORD|INFLUXDB_ADMIN)" .env
+```
+
+### 4. Configure Your Setup
+
+```bash
+# Edit configuration with your Wall Connector IP
+nano .env
+```
+
+**Required settings in `.env`:**
+```env
+# Your Wall Connector IP address
+TWC_CHARGERS=garage:192.168.1.100
+
+# Your timezone (optional, defaults to America/Chicago)
+TZ=America/Chicago
+```
+
+> **Note**: Passwords and tokens are already generated. Only update if you need to change them.
+
+**For Tessie/Fleet API features**, copy and edit `.secrets`:
+```bash
+cp .secrets.example .secrets
+nano .secrets
+```
+
+Add your Tessie token:
+```
+TESSIE_ACCESS_TOKEN=your_tessie_token_here
+```
+
+Then enable in `.env`:
+```env
+TESSIE_ENABLED=true
+```
+
+Restart to apply changes:
+```bash
+docker compose -f docker-compose.unraid.yml restart collector
+```
+
+### 5. Access Your Dashboard
+
+- **Grafana**: http://YOUR_UNRAID_IP:3080
+  - Username: `admin`
+  - Password: Check `.env` for `GRAFANA_ADMIN_PASSWORD`
 - **API Docs**: http://YOUR_UNRAID_IP:8000/docs
 - **InfluxDB**: http://YOUR_UNRAID_IP:8086
 
@@ -285,7 +296,7 @@ Dashboard JSON files are mounted directly, so changes take effect after a Grafan
 
 | Service | Port | Purpose |
 |---------|------|---------|
-| Grafana | 3000 | Dashboard UI |
+| Grafana | 3080 | Dashboard UI |
 | API | 8000 | REST API & WebSocket |
 | InfluxDB | 8086 | Database (optional external access) |
 
@@ -293,5 +304,5 @@ If these ports conflict with other services, modify them in `docker-compose.unra
 
 ```yaml
 ports:
-  - "3001:3000"  # Changed Grafana to 3001
+  - "3001:3000"  # Changed Grafana from 3080 to 3001
 ```

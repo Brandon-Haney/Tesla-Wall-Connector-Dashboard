@@ -11,6 +11,7 @@ from .config import settings, ChargerConfig
 from .twc_client import TWCClient
 from .comed_client import ComEdClient
 from .tessie_client import TessieClient
+from .opower_client import OpowerClient, OpowerAuthError
 from .influx_writer import InfluxWriter
 from .models import TWCVitals, TessieVehicle, VehicleChargingSession, FleetWallConnector, FleetChargeSession
 
@@ -901,6 +902,7 @@ class Collector:
         self.twc_clients: Dict[str, TWCClient] = {}
         self.comed_client: Optional[ComEdClient] = None
         self.tessie_client: Optional[TessieClient] = None
+        self.opower_client: Optional[OpowerClient] = None
         self.influx_writer: Optional[InfluxWriter] = None
         self.session_tracker = SessionTracker()
         self.vehicle_session_tracker = VehicleSessionTracker()
@@ -928,6 +930,13 @@ class Collector:
         self.last_fleet_charge_history: Optional[datetime] = None
         self.fleet_charge_history_poll_interval: int = settings.fleet_charge_history_interval
         self.vehicle_target_map: Dict[str, str] = {}  # target_id -> vehicle_name mapping
+
+        # Opower (meter data) tracking
+        self.last_opower: Optional[datetime] = None
+        self.last_opower_token_refresh: Optional[datetime] = None
+        self.last_opower_cache_check: Optional[datetime] = None
+        self.opower_authenticated: bool = False
+        self.opower_expiry_warned: bool = False  # Track if we've warned about expiry
 
         # Recent completed sessions for correlation (TWC and vehicle)
         # Dict: charger_name -> {end_time, energy_kwh, ...}
@@ -997,6 +1006,63 @@ class Collector:
         elif settings.tessie_enabled:
             logger.warning("Tessie enabled but no access token found in .secrets file")
 
+        # Initialize Opower client if enabled and credentials available
+        if settings.opower_enabled:
+            if settings.opower_username and settings.opower_password:
+                self.opower_client = OpowerClient(
+                    username=settings.opower_username,
+                    password=settings.opower_password,
+                    mfa_method=settings.opower_mfa_method
+                )
+                logger.info("ComEd Opower meter data integration enabled")
+            elif settings.opower_bearer_token:
+                # Pre-authenticated token mode - will validate on startup
+                self.opower_client = OpowerClient(
+                    username="",  # Not needed with bearer token
+                    password="",
+                )
+                self.opower_client.opower_token = settings.opower_bearer_token
+                # Parse actual expiry from JWT token if possible
+                try:
+                    import base64
+                    import json
+                    token = settings.opower_bearer_token
+                    if token.startswith("Bearer "):
+                        token = token[7:]
+                    parts = token.split(".")
+                    if len(parts) >= 2:
+                        # Add padding for base64 decoding
+                        payload_b64 = parts[1] + "=="
+                        payload = json.loads(base64.urlsafe_b64decode(payload_b64))
+                        exp = payload.get("exp")
+                        if exp:
+                            self.opower_client.token_expiry = datetime.fromtimestamp(exp, tz=timezone.utc)
+                            time_remaining = (self.opower_client.token_expiry - datetime.now(timezone.utc)).total_seconds()
+                            if time_remaining > 0:
+                                logger.info(f"ComEd Opower: Bearer token valid for {time_remaining/60:.1f} minutes")
+                            else:
+                                logger.warning("ComEd Opower: Bearer token has expired")
+                except Exception:
+                    # If we can't parse expiry, assume 20 minutes (typical Opower token lifetime)
+                    self.opower_client.token_expiry = datetime.now(timezone.utc) + timedelta(minutes=20)
+                self.opower_authenticated = True
+                logger.info("ComEd Opower enabled with bearer token (token keep-alive active)")
+            else:
+                # No credentials configured - create client and watch for cache file
+                # The hot-reload detection will check for .comed_opower_cache.json every 30 seconds
+                self.opower_client = OpowerClient(
+                    username="",
+                    password="",
+                )
+                logger.info("=" * 60)
+                logger.info("OPOWER: Enabled but not authenticated")
+                logger.info("  Watching for cache file: .comed_opower_cache.json")
+                logger.info("  To authenticate, run locally:")
+                logger.info("    pip install httpx python-dotenv")
+                logger.info("    python scripts/comed_opower_setup.py")
+                logger.info("  The collector will auto-detect the cache file within 30 seconds.")
+                logger.info("=" * 60)
+
         logger.info("-" * 60)
         logger.info(f"Local TWC API: {'ENABLED' if settings.local_twc_enabled else 'DISABLED (using Fleet API only)'}")
         if settings.local_twc_enabled:
@@ -1010,6 +1076,8 @@ class Collector:
             logger.info(f"Tessie polling interval: {settings.tessie_poll_interval}s")
             if self.fleet_energy_site_id or not settings.fleet_energy_site_id:
                 logger.info(f"Fleet TWC polling interval: {settings.fleet_twc_poll_interval}s")
+        if self.opower_client:
+            logger.info(f"Opower polling interval: {settings.opower_poll_interval}s")
         logger.info("-" * 60)
 
         self.running = True
@@ -1034,6 +1102,9 @@ class Collector:
 
         if self.tessie_client:
             await self.tessie_client.close()
+
+        if self.opower_client:
+            await self.opower_client.close()
 
         if self.influx_writer:
             self.influx_writer.close()
@@ -1121,6 +1192,10 @@ class Collector:
 
             # Fetch Fleet API Wall Connector data
             await self._fetch_fleet_twc_initial()
+
+        # Fetch Opower meter data (if authenticated)
+        if self.opower_client:
+            await self._fetch_opower_initial()
 
         logger.info("Initial data fetch complete")
 
@@ -1447,6 +1522,24 @@ class Collector:
                 if self.last_fleet_charge_history is None or (now - self.last_fleet_charge_history).total_seconds() >= self.fleet_charge_history_poll_interval:
                     tasks.append(self._poll_fleet_charge_history())
                     self.last_fleet_charge_history = now
+
+            # Opower polling (meter data - hourly by default)
+            if self.opower_client:
+                if self.opower_authenticated:
+                    # Token keep-alive refresh (every 10 min by default)
+                    if self.last_opower_token_refresh is None or (now - self.last_opower_token_refresh).total_seconds() >= settings.opower_token_refresh_interval:
+                        tasks.append(self._refresh_opower_token())
+                        self.last_opower_token_refresh = now
+
+                    # Data polling (hourly by default)
+                    if self.last_opower is None or (now - self.last_opower).total_seconds() >= settings.opower_poll_interval:
+                        tasks.append(self._poll_opower())
+                        self.last_opower = now
+                else:
+                    # Not authenticated - check for cache file every 30 seconds
+                    if self.last_opower_cache_check is None or (now - self.last_opower_cache_check).total_seconds() >= 30:
+                        tasks.append(self._check_opower_cache())
+                        self.last_opower_cache_check = now
 
             # Execute all pending polls concurrently
             if tasks:
@@ -1954,6 +2047,238 @@ class Collector:
 
         except Exception as e:
             logger.error(f"Error polling Fleet API charge history: {e}")
+
+    # =========================================================================
+    # Opower (ComEd Meter Data) Methods
+    # =========================================================================
+
+    async def _fetch_opower_initial(self):
+        """Fetch initial Opower meter data on startup.
+
+        This attempts to authenticate and bootstrap historical data.
+        Note: Initial authentication requires MFA - use comed_auth.py for first-time setup.
+        """
+        logger.info("-" * 60)
+        logger.info("ComEd Opower Meter Data Bootstrap")
+
+        try:
+            # Try to authenticate (will use cached token if available)
+            await self.opower_client.connect()
+
+            if self.opower_authenticated:
+                # Already authenticated via bearer token in .secrets
+                # Also try to load cached session which has cookies for token refresh
+                if self.opower_client._load_cache():
+                    logger.info("  Using bearer token with cached session (can refresh)")
+                else:
+                    logger.info("  Using bearer token (cannot refresh - run setup script for persistent session)")
+                    logger.info("    docker-compose run --rm collector python scripts/comed_opower_setup.py")
+            else:
+                # Try to load cached session
+                if self.opower_client._load_cache():
+                    self.opower_authenticated = True
+                    logger.info("  Loaded cached authentication session")
+                else:
+                    logger.warning(
+                        "  No cached session found. Run setup locally to complete MFA authentication:"
+                    )
+                    logger.info("    python scripts/comed_opower_setup.py")
+                    logger.info("  Then restart the collector. See docs/COMED_OPOWER_SETUP.md for details.")
+                    logger.info("-" * 60)
+                    return
+
+            # Get account metadata
+            metadata = await self.opower_client.get_metadata()
+            if metadata:
+                logger.info(f"  Rate plan: {metadata.rate_plan}")
+                logger.info(f"  Data resolution: {metadata.read_resolution}")
+                if metadata.available_data_range:
+                    logger.info(f"  Available data: {metadata.available_data_range}")
+
+            # Check what data we already have
+            latest_usage_time = self.influx_writer.get_latest_opower_usage_time()
+            latest_cost_time = self.influx_writer.get_latest_opower_cost_time()
+            latest_bill_time = self.influx_writer.get_latest_opower_bill_time()
+
+            now = datetime.now(timezone.utc)
+
+            # Fetch bill history (monthly data, 12 months)
+            if not latest_bill_time or (now - latest_bill_time).days > 30:
+                logger.info("  Fetching bill history...")
+                bills = await self.opower_client.get_bill_history(months=12)
+                if bills:
+                    self.influx_writer.write_opower_bills_batch(bills)
+                    logger.info(f"  Imported {len(bills)} monthly bills")
+
+            # Fetch recent daily usage (last 30 days)
+            if latest_usage_time:
+                start_date = latest_usage_time
+            else:
+                start_date = now - timedelta(days=30)
+
+            logger.info(f"  Fetching daily usage since {start_date.strftime('%Y-%m-%d')}...")
+            usage_data = await self.opower_client.get_usage_data(start_date, now, "DAY")
+            if usage_data:
+                self.influx_writer.write_opower_usage_batch(usage_data)
+                logger.info(f"  Imported {len(usage_data)} daily usage readings")
+
+            # Fetch recent daily cost (last 30 days)
+            if latest_cost_time:
+                start_date = latest_cost_time
+            else:
+                start_date = now - timedelta(days=30)
+
+            logger.info(f"  Fetching daily cost since {start_date.strftime('%Y-%m-%d')}...")
+            cost_data = await self.opower_client.get_cost_data(start_date, now, "DAY")
+            if cost_data:
+                self.influx_writer.write_opower_cost_batch(cost_data)
+                logger.info(f"  Imported {len(cost_data)} daily cost readings")
+
+                # Calculate average effective rate from cost data
+                if cost_data:
+                    total_kwh = sum(c.kwh for c in cost_data)
+                    total_cost = sum(c.cost_dollars for c in cost_data)
+                    if total_kwh > 0:
+                        effective_rate = (total_cost / total_kwh) * 100
+                        logger.info(f"  Average effective rate: {effective_rate:.2f}¢/kWh (all-in)")
+
+            self.last_opower = now
+            logger.info("  Opower bootstrap complete")
+            logger.info("-" * 60)
+
+        except OpowerAuthError as e:
+            logger.error("=" * 60)
+            logger.error(f"OPOWER: AUTHENTICATION FAILED - {e}")
+            logger.error("Session may have expired. To fix:")
+            logger.error("  1. Run locally: python scripts/comed_opower_setup.py --force")
+            logger.error("  2. Restart collector: docker-compose restart collector")
+            logger.error("=" * 60)
+            self.opower_authenticated = False
+
+        except Exception as e:
+            logger.error(f"Error during Opower bootstrap: {e}")
+            logger.info("-" * 60)
+
+    async def _poll_opower(self):
+        """Poll Opower for new meter data.
+
+        This fetches incremental usage and cost data since the last poll.
+        Note: ComEd meter data typically updates once per day.
+        """
+        try:
+            if not self.opower_authenticated:
+                return
+
+            # Ensure we're still authenticated
+            if not await self.opower_client.ensure_authenticated():
+                logger.error("=" * 60)
+                logger.error("OPOWER: SESSION EXPIRED!")
+                logger.error("Meter data collection is now STOPPED.")
+                logger.error("To restore, run locally:")
+                logger.error("  python scripts/comed_opower_setup.py --force")
+                logger.error("Then restart: docker-compose restart collector")
+                logger.error("=" * 60)
+                self.opower_authenticated = False
+                return
+
+            now = datetime.now(timezone.utc)
+
+            # Fetch recent usage (since last poll or last 7 days)
+            latest_usage_time = self.influx_writer.get_latest_opower_usage_time()
+            if latest_usage_time:
+                start_date = latest_usage_time
+            else:
+                start_date = now - timedelta(days=7)
+
+            # Only fetch if we might have new data (check daily)
+            if (now - start_date).days >= 1:
+                usage_data = await self.opower_client.get_usage_data(start_date, now, "DAY")
+                if usage_data:
+                    self.influx_writer.write_opower_usage_batch(usage_data)
+                    logger.info(f"Opower: Imported {len(usage_data)} new usage readings")
+
+                # Fetch cost data for same period
+                cost_data = await self.opower_client.get_cost_data(start_date, now, "DAY")
+                if cost_data:
+                    self.influx_writer.write_opower_cost_batch(cost_data)
+                    logger.info(f"Opower: Imported {len(cost_data)} new cost readings")
+
+        except OpowerAuthError as e:
+            logger.warning(f"Opower authentication error: {e}")
+            self.opower_authenticated = False
+
+        except Exception as e:
+            logger.error(f"Error polling Opower: {e}")
+
+    async def _refresh_opower_token(self):
+        """Proactively refresh the Opower token to keep the session alive.
+
+        This runs every 10 minutes (configurable) to prevent token expiry.
+        The token typically expires after ~20 minutes, so refreshing every 10
+        keeps us well ahead of expiry.
+        """
+        try:
+            if not self.opower_authenticated:
+                return
+
+            # Check if token is close to expiry (within 5 minutes)
+            if self.opower_client.token_expiry:
+                time_to_expiry = (self.opower_client.token_expiry - datetime.now(timezone.utc)).total_seconds()
+                if time_to_expiry > 300:  # More than 5 minutes left, skip refresh
+                    self.opower_expiry_warned = False  # Reset warning flag
+                    return
+
+                # Warn if getting close to expiry
+                if time_to_expiry < 120 and not self.opower_expiry_warned:
+                    logger.warning(f"Opower: Token expires in {time_to_expiry:.0f}s - attempting refresh...")
+                    self.opower_expiry_warned = True
+
+            # Attempt to refresh
+            if await self.opower_client.refresh_token():
+                logger.info("Opower: Token refreshed successfully - session alive")
+                self.opower_expiry_warned = False
+            else:
+                # Refresh failed - this is serious, warn loudly
+                logger.error("=" * 60)
+                logger.error("OPOWER: TOKEN REFRESH FAILED!")
+                logger.error("Session will expire soon. To fix:")
+                logger.error("  1. Run locally: python scripts/comed_opower_setup.py --force")
+                logger.error("  2. Restart collector: docker-compose restart collector")
+                logger.error("=" * 60)
+
+        except Exception as e:
+            logger.error(f"Opower: Token refresh error: {e}")
+
+    async def _check_opower_cache(self):
+        """Check if Opower cache file has been added and initialize if found.
+
+        This runs periodically when Opower is enabled but not authenticated,
+        allowing hot-reload when the user runs the setup script.
+        """
+        try:
+            await self.opower_client.connect()
+
+            # Try to load cache
+            if self.opower_client._load_cache():
+                logger.info("=" * 60)
+                logger.info("OPOWER: Cache file detected! Initializing...")
+                logger.info("=" * 60)
+
+                self.opower_authenticated = True
+                self.opower_expiry_warned = False
+
+                # Run the full initialization
+                await self._fetch_opower_initial()
+
+                if self.opower_authenticated:
+                    logger.info("=" * 60)
+                    logger.info("OPOWER: Successfully initialized from cache file!")
+                    logger.info("  Token refresh is now active (every 10 min)")
+                    logger.info("  Data polling is now active (every hour)")
+                    logger.info("=" * 60)
+
+        except Exception as e:
+            logger.debug(f"Opower cache check: {e}")
 
 
 async def main():

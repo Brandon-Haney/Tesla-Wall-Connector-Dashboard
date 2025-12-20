@@ -76,10 +76,22 @@ class Settings(BaseSettings):
     twc_poll_version_interval: int = Field(default=300, alias="TWC_POLL_VERSION_INTERVAL")
     twc_poll_wifi_interval: int = Field(default=300, alias="TWC_POLL_WIFI_INTERVAL")
 
-    # ComEd
+    # ComEd Hourly Pricing (public API)
     comed_enabled: bool = Field(default=True, alias="COMED_ENABLED")
     comed_poll_interval: int = Field(default=300, alias="COMED_POLL_INTERVAL")
     comed_delivery_per_kwh: float = Field(default=0.075, alias="COMED_DELIVERY_PER_KWH")  # 7.5 cents
+
+    # ComEd Opower (authenticated API for meter data)
+    # Provides actual usage/cost from smart meter for bill reconciliation
+    opower_enabled: bool = Field(default=False, alias="OPOWER_ENABLED")
+    opower_poll_interval: int = Field(default=3600, alias="OPOWER_POLL_INTERVAL")  # 1 hour default
+    opower_token_refresh_interval: int = Field(default=600, alias="OPOWER_TOKEN_REFRESH_INTERVAL")  # 10 min default
+    opower_mfa_method: str = Field(default="email", alias="OPOWER_MFA_METHOD")  # email or sms
+    # Credentials loaded from .secrets file
+    opower_username: Optional[str] = Field(default=None, alias="COMED_USERNAME")
+    opower_password: Optional[str] = Field(default=None, alias="COMED_PASSWORD")
+    # Optional pre-authenticated bearer token (bypasses login)
+    opower_bearer_token: Optional[str] = Field(default=None, alias="COMED_BEARER_TOKEN")
 
     # Tessie API (Phase 4)
     tessie_enabled: bool = Field(default=False, alias="TESSIE_ENABLED")
@@ -245,7 +257,8 @@ def create_settings() -> Settings:
     for key, value in secrets.items():
         # Only set if not already in environment (env vars take precedence)
         # Actually, for secrets we want the .secrets file to be authoritative
-        if key.startswith("TESSIE_") or key.endswith("_TOKEN") or key.endswith("_PASSWORD"):
+        if (key.startswith("TESSIE_") or key.startswith("COMED_") or
+                key.endswith("_TOKEN") or key.endswith("_PASSWORD")):
             os.environ[key] = value
 
     return Settings()

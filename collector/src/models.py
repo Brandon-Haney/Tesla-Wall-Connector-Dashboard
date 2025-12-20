@@ -772,3 +772,83 @@ class FleetChargeSession(BaseModel):
             din=data.get("din", ""),
             target_id=data.get("target_id", {}).get("text", ""),
         )
+
+
+# =============================================================================
+# ComEd Opower Models (Phase 4.6)
+# =============================================================================
+
+class OpowerUsageRead(BaseModel):
+    """Usage reading from ComEd Opower API.
+
+    Represents actual metered electricity usage from the smart meter.
+    This is what appears on your ComEd bill.
+    """
+
+    timestamp: datetime  # Start of the measurement period
+    kwh: float  # Energy used in kWh
+    resolution: str = "DAY"  # DAY, HOUR, or HALF_HOUR
+
+    @property
+    def wh(self) -> float:
+        """Energy in watt-hours."""
+        return self.kwh * 1000.0
+
+
+class OpowerCostRead(BaseModel):
+    """Cost reading from ComEd Opower API.
+
+    Represents actual billed cost including all fees (supply, delivery, taxes).
+    This is the true cost that appears on your ComEd bill.
+    """
+
+    timestamp: datetime  # Start of the measurement period
+    kwh: float  # Energy used in kWh
+    cost_dollars: float  # Total cost in dollars (includes all fees)
+    resolution: str = "DAY"  # DAY or HOUR
+
+    @property
+    def cost_cents(self) -> float:
+        """Total cost in cents."""
+        return self.cost_dollars * 100.0
+
+    @property
+    def effective_rate_cents(self) -> float:
+        """Effective all-in rate in cents per kWh."""
+        if self.kwh > 0:
+            return self.cost_cents / self.kwh
+        return 0.0
+
+
+class OpowerBillSummary(BaseModel):
+    """Bill summary from ComEd Opower API.
+
+    Represents a monthly bill with breakdown of charges.
+    """
+
+    bill_date: Optional[datetime] = None  # Bill period start
+    total_kwh: float = 0.0  # Total energy for billing period
+    total_cost_dollars: float = 0.0  # Total bill amount
+    usage_charges_dollars: float = 0.0  # Energy charges only
+    is_estimated: bool = False  # Whether readings were estimated
+
+    @property
+    def non_usage_charges_dollars(self) -> float:
+        """Fixed charges, fees, taxes (total - usage)."""
+        return self.total_cost_dollars - self.usage_charges_dollars
+
+    @property
+    def effective_rate_cents(self) -> float:
+        """Effective all-in rate in cents per kWh."""
+        if self.total_kwh > 0:
+            return (self.total_cost_dollars * 100.0) / self.total_kwh
+        return 0.0
+
+
+class OpowerMetadata(BaseModel):
+    """Account metadata from ComEd Opower API."""
+
+    rate_plan: Optional[str] = None  # e.g., "C-H70R" for hourly pricing
+    read_resolution: Optional[str] = None  # e.g., "HALF_HOUR"
+    available_data_range: Optional[str] = None  # e.g., "2023-06-01/2025-12-18"
+    timezone: Optional[str] = None  # e.g., "America/Chicago"

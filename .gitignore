@@ -2,6 +2,10 @@
 .env
 .secrets
 
+# Opower authentication cache (contains tokens and session cookies)
+.comed_opower_cache.json
+*_token_cache.json
+
 # Python
 __pycache__/
 *.py[cod]
@@ -50,3 +54,6 @@ htmlcov/
 # Temporary files
 *.tmp
 *.bak
+
+# Scripts directory (local utilities, not part of core project)
+scripts/
