@@ -880,19 +880,111 @@ The [tronikos/opower](https://github.com/tronikos/opower) library uses ComEd's m
   - Handles authentication failures gracefully
 
 ##### Step 4.6.4: Dashboard Integration - PLANNED
-- [ ] Add "Home Usage" section to Energy & Costs dashboard
-  - Total home usage vs EV charging usage
-  - EV charging as percentage of total
-  - Actual costs vs estimated costs comparison
-- [ ] Create "Billing Comparison" panel
-  - Compare our calculated costs vs actual Opower costs
-  - Show any discrepancies (helps tune delivery_rate)
-- [ ] Add temperature correlation panel
-  - Usage vs temperature chart
-  - Identify HVAC impact on bills
-- [ ] Add historical usage trends
-  - Daily/weekly/monthly home consumption
-  - Year-over-year comparison
+
+**New Dashboard: "Meter & Bills" (Opower Data)**
+
+Create a dedicated dashboard for ComEd meter data and bill analysis. This provides the "ground truth" data from your actual smart meter.
+
+**Row 1: Current Status**
+| Panel | Type | Description |
+|-------|------|-------------|
+| Opower Status | Stat | Shows "Connected" (green) or "Expired" (red) based on token status |
+| Today's Usage | Stat | kWh used today from smart meter |
+| Yesterday's Usage | Stat | kWh used yesterday |
+| Month-to-Date Usage | Stat | Total kWh this billing period |
+| Month-to-Date Cost | Stat | Estimated cost so far this month |
+| Effective Rate | Stat | Your true all-in ¢/kWh (total cost ÷ total kWh) |
+
+**Row 2: Daily Usage Chart**
+| Panel | Type | Description |
+|-------|------|-------------|
+| Daily Electricity Usage | Time Series | Bar chart showing daily kWh from smart meter (last 30 days) |
+| Daily Electricity Cost | Time Series | Bar chart showing daily cost in dollars (last 30 days) |
+
+**Row 3: EV Charging Analysis**
+| Panel | Type | Description |
+|-------|------|-------------|
+| EV % of Total Usage | Gauge | Percentage of home electricity used for EV charging |
+| EV Charging (kWh) | Stat | Total EV charging energy this month (from Fleet API) |
+| Home Usage (kWh) | Stat | Total home usage this month (from Opower) |
+| Non-EV Usage (kWh) | Stat | Calculated: Home - EV |
+
+**Row 4: Cost Comparison**
+| Panel | Type | Description |
+|-------|------|-------------|
+| Calculated vs Actual | Bar Gauge | Side-by-side comparison of our calculated costs vs Opower actual costs |
+| Cost Discrepancy | Stat | Difference in dollars (helps tune delivery_rate) |
+| Calculated Rate | Stat | Our estimated effective rate |
+| Actual Rate | Stat | True effective rate from Opower |
+
+**Row 5: Bill History**
+| Panel | Type | Description |
+|-------|------|-------------|
+| Monthly Bills | Table | Last 12 months: Month, kWh, Total Cost, Effective Rate, Estimated flag |
+| Bill Trend | Time Series | Line chart of monthly bills over time |
+| Average Monthly Bill | Stat | Rolling 12-month average bill amount |
+| Average Monthly Usage | Stat | Rolling 12-month average kWh |
+
+**Row 6: Rate Analysis**
+| Panel | Type | Description |
+|-------|------|-------------|
+| Effective Rate History | Time Series | Daily effective rate (¢/kWh) over last 30 days |
+| Rate Distribution | Histogram | Distribution of daily effective rates |
+| Best/Worst Days | Table | Top 5 cheapest and most expensive days (by ¢/kWh) |
+
+**Template Variables:**
+- `datasource`: InfluxDB datasource (standard)
+- `time_range`: Custom time range selector
+
+**Data Sources:**
+- `comed_meter_usage`: Daily/hourly kWh from smart meter
+- `comed_meter_cost`: Daily costs with effective rates
+- `comed_bill`: Monthly bill summaries
+- `fleet_charge_session`: EV charging sessions for comparison
+
+**Flux Query Examples:**
+
+```flux
+// Today's usage from smart meter
+from(bucket: "twc_dashboard")
+  |> range(start: today())
+  |> filter(fn: (r) => r._measurement == "comed_meter_usage")
+  |> filter(fn: (r) => r._field == "kwh")
+  |> sum()
+
+// EV as percentage of total (this month)
+ev_kwh = from(bucket: "twc_dashboard")
+  |> range(start: -30d)
+  |> filter(fn: (r) => r._measurement == "fleet_charge_session")
+  |> filter(fn: (r) => r._field == "energy_kwh")
+  |> sum()
+
+total_kwh = from(bucket: "twc_dashboard")
+  |> range(start: -30d)
+  |> filter(fn: (r) => r._measurement == "comed_meter_usage")
+  |> filter(fn: (r) => r._field == "kwh")
+  |> sum()
+
+// Percentage = (ev_kwh / total_kwh) * 100
+
+// Monthly bill history
+from(bucket: "twc_dashboard")
+  |> range(start: -365d)
+  |> filter(fn: (r) => r._measurement == "comed_bill")
+  |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")
+  |> map(fn: (r) => ({
+      _time: r._time,
+      "Usage (kWh)": r.total_kwh,
+      "Total Cost": r.total_cost_dollars,
+      "Rate (¢/kWh)": r.effective_rate_cents
+    }))
+```
+
+**Implementation Tasks:**
+- [ ] Create `grafana/dashboards/meter-bills.json`
+- [ ] Add dashboard to provisioning
+- [ ] Test all panels with real Opower data
+- [ ] Add to dashboard navigation
 
 ##### Step 4.6.5: First-Time Setup Flow - COMPLETE ✅
 - [x] Document MFA setup process in `docs/COMED_OPOWER_SETUP.md`
