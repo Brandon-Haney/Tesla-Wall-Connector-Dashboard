@@ -170,42 +170,83 @@ This project uses **[Tessie](https://tessie.com)** to access Tesla's Fleet API. 
 
 ## Dashboards
 
-### Live Overview
+Seven dashboards are included, each serving a specific purpose:
+
+### Charging Overview (Home Dashboard)
+The main dashboard showing real-time charging status across all Wall Connectors via Fleet API.
+- Total power draw across all units
+- Per-unit power breakdown (leader + followers)
+- Which vehicle is charging at which unit
+- Current ComEd price and session cost
+- Recent charging sessions table
+- Unit and vehicle dropdown filters
+
+### Fleet Wall Connectors
+Real-time status of all Wall Connector units in your power-sharing setup.
+- All Wall Connectors table with power, state, vehicle, and fault status
+- Units charging and vehicles connected counts
+- Power history chart by unit
+- Today's charging sessions table
+- Today's energy and session count
+- Last session by unit
+- This week vs last week comparison
+
+### Session History
+Complete charging session history from Fleet API with cost breakdowns.
+- Total sessions, energy, and costs for selected period
+- Daily cost breakdown chart (supply vs full cost)
+- Daily energy usage chart
+- Session history table with unit, vehicle, duration, energy, and costs
+- Weekly and monthly summary tables
+- Filter by unit or vehicle
+
+### Energy & Costs
+Energy consumption and cost analysis using Fleet API data.
+- Total energy for selected time period
+- Total charge sessions and charging time
+- Average supply price and full rate
+- Estimated total cost (including delivery charges)
+- Hourly energy consumption (bar chart)
+- Real-time price trends with color thresholds
+- Cumulative energy tracking
+- Best charging hours table (sorted by lowest price)
+
+### Vehicle Status
+Tesla vehicle data via Tessie API with smart charging controls.
+- Battery level gauge and range
+- Charging state, power, and amps
+- Time to full charge
+- Inside/outside temperatures
+- Software version and odometer
+- Fleet charging sessions (last 7 days)
+- Smart charging status and controls
+- Temperature unit toggle (°F/°C)
+
+### Meter & Bills
+Actual electricity usage and costs from your ComEd smart meter via Opower integration.
+- Opower connection status
+- Today's and yesterday's usage from smart meter
+- Month-to-date usage and cost
+- Daily electricity usage and cost charts (30 days)
+- EV charging as percentage of total usage
+- Cost comparison: calculated vs actual billed
+- Monthly bills table with usage, cost, and effective rate
+- Bill trend chart and averages
+- Effective rate history and best/worst days
+
+### Live Overview (Legacy)
+Original dashboard using local Wall Connector API. Kept for diagnostics but deprecated in favor of Fleet API dashboards.
 - Current power draw (real-time watts)
-- Vehicle connection status (Connected/Not Connected)
-- Charging status (Charging/Idle)
-- Session energy counter (kWh)
-- Lifetime energy (MWh)
-- **Supply Rate**: Current ComEd hourly price with color-coded thresholds
-- **Full Rate (Est.)**: Supply + delivery rate for true cost estimation
-- **Session Cost**: Real-time cost tracking during active charging
-- Power draw chart over time
+- Vehicle connection and charging status
 - Temperature monitoring (PCBA, Handle, MCU)
 - Grid voltage and frequency
 - WiFi signal strength
 - Uptime and firmware version
 
-### Energy & Costs
-- Total energy for selected time period
-- Total charge sessions
-- **Average Supply Price** and **Average Full Rate (Est.)**
-- **Estimated Total Cost** (including delivery charges)
-- Total charging time
-- Hourly energy consumption (bar chart)
-- Hourly price trends with color thresholds (green/yellow/orange/red)
-- Cumulative energy tracking
-- Best charging hours table (sorted by lowest price)
-- Price by hour of day visualization
-
-### Session History
-- Total sessions, energy, and costs for selected period
-- Daily cost breakdown chart (supply vs full cost)
-- Daily energy usage chart
-- Session history table with detailed cost breakdown
-- Weekly and monthly summary tables
+> **Note**: The local API only sees the leader unit in power-sharing setups. Use Fleet Wall Connectors for complete visibility.
 
 ### Price Thresholds
-Prices are color-coded for quick decision making:
+Prices are color-coded across all dashboards for quick decision making:
 - **Green**: < 4¢/kWh - Great time to charge!
 - **Yellow**: 4-6¢/kWh - Moderate pricing
 - **Orange**: 6-8¢/kWh - Getting expensive
