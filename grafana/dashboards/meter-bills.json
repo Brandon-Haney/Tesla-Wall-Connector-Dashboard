@@ -695,8 +695,7 @@
           { "matcher": { "id": "byName", "options": "Month" }, "properties": [{ "id": "custom.width", "value": 120 }] },
           { "matcher": { "id": "byName", "options": "Usage (kWh)" }, "properties": [{ "id": "unit", "value": "kwatth" }, { "id": "decimals", "value": 0 }] },
           { "matcher": { "id": "byName", "options": "Total Cost" }, "properties": [{ "id": "unit", "value": "currencyUSD" }, { "id": "decimals", "value": 2 }] },
-          { "matcher": { "id": "byName", "options": "Rate (c/kWh)" }, "properties": [{ "id": "unit", "value": "cent" }, { "id": "decimals", "value": 2 }, { "id": "custom.cellOptions", "value": { "type": "color-background" } }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 12 }, { "color": "orange", "value": 15 }, { "color": "red", "value": 18 }] } }] },
-          { "matcher": { "id": "byName", "options": "Estimated" }, "properties": [{ "id": "mappings", "value": [{ "options": { "false": { "color": "green", "index": 0, "text": "" }, "true": { "color": "yellow", "index": 1, "text": "Est" } }, "type": "value" }] }] }
+          { "matcher": { "id": "byName", "options": "Rate (c/kWh)" }, "properties": [{ "id": "unit", "value": "cent" }, { "id": "decimals", "value": 2 }, { "id": "custom.cellOptions", "value": { "type": "color-background" } }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 12 }, { "color": "orange", "value": 15 }, { "color": "red", "value": 18 }] } }] }
         ]
       },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 31 },
@@ -710,7 +709,7 @@
       "targets": [
         {
           "datasource": { "type": "influxdb", "uid": "${datasource}" },
-          "query": "import \"date\"\nimport \"strings\"\n\nmonthNames = [\"Jan\", \"Feb\", \"Mar\", \"Apr\", \"May\", \"Jun\", \"Jul\", \"Aug\", \"Sep\", \"Oct\", \"Nov\", \"Dec\"]\n\nfrom(bucket: \"twc_dashboard\")\n  |> range(start: -365d)\n  |> filter(fn: (r) => r._measurement == \"comed_bill\")\n  |> pivot(rowKey: [\"_time\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> map(fn: (r) => ({\n      _time: r._time,\n      Month: monthNames[date.month(t: r._time) - 1] + \" \" + string(v: date.year(t: r._time)),\n      \"Usage (kWh)\": r.total_kwh,\n      \"Total Cost\": r.total_cost_dollars,\n      \"Rate (c/kWh)\": r.effective_rate_cents,\n      Estimated: r.estimated\n    }))\n  |> sort(columns: [\"_time\"], desc: true)\n  |> keep(columns: [\"Month\", \"Usage (kWh)\", \"Total Cost\", \"Rate (c/kWh)\", \"Estimated\"])",
+          "query": "import \"date\"\n\nmonthNames = [\"Jan\", \"Feb\", \"Mar\", \"Apr\", \"May\", \"Jun\", \"Jul\", \"Aug\", \"Sep\", \"Oct\", \"Nov\", \"Dec\"]\n\nfrom(bucket: \"twc_dashboard\")\n  |> range(start: -365d)\n  |> filter(fn: (r) => r._measurement == \"comed_bill\")\n  |> pivot(rowKey: [\"_time\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> map(fn: (r) => ({\n      _time: r._time,\n      Month: monthNames[date.month(t: r._time) - 1] + \" \" + string(v: date.year(t: r._time)),\n      \"Usage (kWh)\": r.total_kwh,\n      \"Total Cost\": r.total_cost_dollars,\n      \"Rate (c/kWh)\": r.effective_rate_cents\n    }))\n  |> sort(columns: [\"_time\"], desc: true)\n  |> keep(columns: [\"Month\", \"Usage (kWh)\", \"Total Cost\", \"Rate (c/kWh)\"])",
           "refId": "A"
         }
       ],
