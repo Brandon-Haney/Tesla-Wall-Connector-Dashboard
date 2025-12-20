@@ -23,8 +23,6 @@ cd twc-dashboard
 
 ### 2. Deploy
 
-On first run, secure random passwords and tokens are **automatically generated** and saved to `.env`.
-
 **Option A: Using Docker Compose Manager (Recommended)**
 
 1. Open Unraid web UI
@@ -40,31 +38,37 @@ cd /mnt/user/appdata/twc-dashboard
 docker compose up -d
 ```
 
-### 3. Get Your Login Credentials
+### 3. Access the Dashboard
 
-After first run, view your auto-generated passwords:
+- **Grafana**: http://YOUR_UNRAID_IP:3080
+  - Username: `admin`
+  - Password: `changeme`
+- **API Docs**: http://YOUR_UNRAID_IP:8000/docs
+- **InfluxDB**: http://YOUR_UNRAID_IP:8086
+
+### 4. Configure Your Setup (Optional)
+
+To customize settings (Wall Connector IP, passwords, Tessie integration):
 
 ```bash
-grep -E "(GRAFANA_ADMIN_PASSWORD|INFLUXDB_ADMIN)" .env
-```
-
-### 4. Configure Your Setup
-
-```bash
-# Edit configuration with your Wall Connector IP
+cp .env.example .env
 nano .env
 ```
 
-**Required settings in `.env`:**
+**Common settings in `.env`:**
 ```env
 # Your Wall Connector IP address
 TWC_CHARGERS=garage:192.168.1.100
 
 # Your timezone (optional, defaults to America/Chicago)
 TZ=America/Chicago
+
+# Custom passwords (recommended for security)
+GRAFANA_ADMIN_PASSWORD=your_secure_password
+INFLUXDB_ADMIN_PASSWORD=your_secure_password
 ```
 
-> **Note**: Passwords and tokens are already generated. Only update if you need to change them.
+> **Note**: The dashboard works without `.env` using default credentials. Create `.env` only if you need to customize settings or secure your installation.
 
 **For Tessie/Fleet API features**, copy and edit `.secrets`:
 ```bash
@@ -86,14 +90,6 @@ Restart to apply changes:
 ```bash
 docker compose restart collector
 ```
-
-### 5. Access Your Dashboard
-
-- **Grafana**: http://YOUR_UNRAID_IP:3080
-  - Username: `admin`
-  - Password: Check `.env` for `GRAFANA_ADMIN_PASSWORD`
-- **API Docs**: http://YOUR_UNRAID_IP:8000/docs
-- **InfluxDB**: http://YOUR_UNRAID_IP:8086
 
 ---
 

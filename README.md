@@ -40,31 +40,21 @@ A real-time monitoring dashboard for Tesla Wall Connector Gen 3 chargers with Co
    docker-compose up -d
    ```
 
-   On first run, secure random passwords and tokens are **automatically generated** and saved to `.env`.
+3. **Access the dashboard**
+   - **Grafana**: http://localhost:3080
+     - Username: `admin`
+     - Password: `changeme`
+   - **API**: http://localhost:8000 (REST API & docs)
+   - **InfluxDB**: http://localhost:8086
 
-3. **Get your login credentials**
+4. **Configure your Wall Connector IP** (optional - for local TWC monitoring)
    ```bash
-   # View your auto-generated passwords
-   grep -E "(GRAFANA_ADMIN_PASSWORD|INFLUXDB_ADMIN)" .env
-   ```
-
-4. **Configure your Wall Connector IP**
-   ```bash
-   # Edit .env with your Wall Connector IP address
-   nano .env  # or use any text editor
-   # Find TWC_CHARGERS and set your IP: TWC_CHARGERS=garage:192.168.1.100
+   cp .env.example .env
+   nano .env  # Set TWC_CHARGERS=garage:YOUR_IP
    docker-compose restart collector
    ```
 
-5. **Access the services**
-   - **Grafana**: http://localhost:3080
-     - Username: `admin`
-     - Password: Check `.env` for `GRAFANA_ADMIN_PASSWORD`
-   - **API**: http://localhost:8000 (REST API & docs)
-   - **InfluxDB**: http://localhost:8086
-     - Token: Check `.env` for `INFLUXDB_ADMIN_TOKEN`
-
-> **Security Note**: The `.env` file contains your passwords and tokens. Keep it secure and never commit it to version control (it's already in `.gitignore`).
+> **Security Note**: For production use, copy `.env.example` to `.env` and set custom passwords. The defaults work for testing but should be changed.
 
 ## Configuration
 

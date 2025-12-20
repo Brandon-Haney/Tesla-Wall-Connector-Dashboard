@@ -1,55 +1,9 @@
 services:
-  # First-run initialization - generates .env with random tokens if not exists
-  init:
-    image: alpine:3.19
-    container_name: twc-init
-    volumes:
-      - ./:/config
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - |
-        if [ -f /config/.env ]; then
-          echo "✓ .env already exists, skipping initialization"
-          exit 0
-        fi
-
-        if [ ! -f /config/.env.example ]; then
-          echo "✗ .env.example not found!"
-          exit 1
-        fi
-
-        echo "Generating .env with random tokens..."
-
-        # Generate random tokens
-        INFLUX_TOKEN=$$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | head -c 48)
-        GRAFANA_PASS=$$(cat /dev/urandom | tr -dc 'a-zA-Z0-9!@#%' | head -c 16)
-        INFLUX_PASS=$$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | head -c 16)
-
-        # Copy template and replace placeholders
-        cp /config/.env.example /config/.env
-        sed -i "s|INFLUXDB_ADMIN_TOKEN=.*|INFLUXDB_ADMIN_TOKEN=$${INFLUX_TOKEN}|" /config/.env
-        sed -i "s|INFLUXDB_ADMIN_PASSWORD=.*|INFLUXDB_ADMIN_PASSWORD=$${INFLUX_PASS}|" /config/.env
-        sed -i "s|GRAFANA_ADMIN_PASSWORD=.*|GRAFANA_ADMIN_PASSWORD=$${GRAFANA_PASS}|" /config/.env
-
-        echo "============================================================"
-        echo "✓ Generated .env with random credentials"
-        echo ""
-        echo "  InfluxDB Token: $${INFLUX_TOKEN}"
-        echo "  InfluxDB Password: $${INFLUX_PASS}"
-        echo "  Grafana Password: $${GRAFANA_PASS}"
-        echo ""
-        echo "  These are saved in .env - keep this file secure!"
-        echo "============================================================"
-    restart: "no"
-
   # InfluxDB - Time Series Database
   influxdb:
     image: influxdb:2.7
     container_name: twc-influxdb
     restart: unless-stopped
-    depends_on:
-      init:
-        condition: service_completed_successfully
     ports:
       - "8086:8086"
     environment:
