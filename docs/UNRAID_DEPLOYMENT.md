@@ -30,14 +30,14 @@ On first run, secure random passwords and tokens are **automatically generated**
 1. Open Unraid web UI
 2. Go to Docker → Add New Stack
 3. Name: `twc-dashboard`
-4. Compose file: `/mnt/user/appdata/twc-dashboard/docker-compose.unraid.yml`
+4. Compose file: `/mnt/user/appdata/twc-dashboard/docker-compose.yml`
 5. Click "Compose Up"
 
 **Option B: Command Line**
 
 ```bash
 cd /mnt/user/appdata/twc-dashboard
-docker compose -f docker-compose.unraid.yml up -d
+docker compose up -d
 ```
 
 ### 3. Get Your Login Credentials
@@ -84,7 +84,7 @@ TESSIE_ENABLED=true
 
 Restart to apply changes:
 ```bash
-docker compose -f docker-compose.unraid.yml restart collector
+docker compose restart collector
 ```
 
 ### 5. Access Your Dashboard
@@ -104,7 +104,7 @@ To update to the latest version:
 ```bash
 cd /mnt/user/appdata/twc-dashboard
 git pull
-docker compose -f docker-compose.unraid.yml up -d --build
+docker compose up -d --build
 ```
 
 The `--build` flag ensures the collector and API containers are rebuilt with the new code.
@@ -137,7 +137,7 @@ Copy the backup folder to Unraid using:
 
 ```bash
 # Start just InfluxDB first
-docker compose -f docker-compose.unraid.yml up -d influxdb
+docker compose up -d influxdb
 
 # Wait for it to be healthy
 sleep 30
@@ -149,7 +149,7 @@ docker cp /mnt/user/appdata/twc-backup/influxdb-backup twc-influxdb:/tmp/backup
 docker exec twc-influxdb influx restore /tmp/backup --org home --token YOUR_TOKEN
 
 # Start remaining services
-docker compose -f docker-compose.unraid.yml up -d
+docker compose up -d
 ```
 
 ---
@@ -188,22 +188,22 @@ The Fleet API provides all charging data via the cloud, so local network access 
 
 ```bash
 # All services
-docker compose -f docker-compose.unraid.yml logs -f
+docker compose logs -f
 
 # Specific service
-docker compose -f docker-compose.unraid.yml logs -f collector
+docker compose logs -f collector
 ```
 
 ### Check Service Status
 
 ```bash
-docker compose -f docker-compose.unraid.yml ps
+docker compose ps
 ```
 
 ### Restart Services
 
 ```bash
-docker compose -f docker-compose.unraid.yml restart
+docker compose restart
 ```
 
 ### Common Issues
@@ -223,9 +223,9 @@ docker compose -f docker-compose.unraid.yml restart
 - Look for auth errors in collector logs
 
 **Build failures**
-- Check Docker logs: `docker compose -f docker-compose.unraid.yml logs`
+- Check Docker logs: `docker compose logs`
 - Ensure you have enough disk space for building images
-- Try rebuilding: `docker compose -f docker-compose.unraid.yml build --no-cache`
+- Try rebuilding: `docker compose build --no-cache`
 
 ---
 
@@ -267,7 +267,7 @@ When you want to modify Grafana dashboards or add features:
    ```bash
    cd /mnt/user/appdata/twc-dashboard
    git pull
-   docker compose -f docker-compose.unraid.yml restart grafana
+   docker compose restart grafana
    ```
 
 Dashboard JSON files are mounted directly, so changes take effect after a Grafana restart.
@@ -282,7 +282,7 @@ Dashboard JSON files are mounted directly, so changes take effect after a Grafan
 | API | 8000 | REST API & WebSocket |
 | InfluxDB | 8086 | Database (optional external access) |
 
-If these ports conflict with other services, modify them in `docker-compose.unraid.yml`:
+If these ports conflict with other services, modify them in `docker-compose.yml`:
 
 ```yaml
 ports:

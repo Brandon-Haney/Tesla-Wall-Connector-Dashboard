@@ -398,17 +398,10 @@ python -m src.main
 For Unraid users, a dedicated deployment guide is available:
 
 1. **Clone to Unraid**: `/mnt/user/appdata/twc-dashboard`
-2. **Deploy**: `docker compose -f docker-compose.unraid.yml up -d`
+2. **Deploy**: `docker compose up -d`
 3. **Credentials**: Auto-generated on first run - check `.env`
 
 See [docs/UNRAID_DEPLOYMENT.md](docs/UNRAID_DEPLOYMENT.md) for complete instructions.
-
-### Updating
-
-```bash
-git pull
-docker compose -f docker-compose.unraid.yml up -d --build
-```
 
 ## Future Enhancements
 
