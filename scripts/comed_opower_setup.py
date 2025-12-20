@@ -522,14 +522,23 @@ async def run_authentication(username: str, password: str, mfa_method: str = "em
             await auth.authenticate(force_mfa=force)
 
             print_banner("AUTHENTICATION SUCCESSFUL!")
-            print(f"\nToken expires: {auth.token_expiry.strftime('%Y-%m-%d %H:%M:%S') if auth.token_expiry else 'Unknown'}")
+            if auth.token_expiry:
+                # Show expiry in both UTC and local time for clarity
+                utc_str = auth.token_expiry.strftime('%Y-%m-%d %H:%M:%S UTC')
+                local_time = auth.token_expiry.astimezone()
+                local_str = local_time.strftime('%H:%M:%S %Z')
+                time_remaining = (auth.token_expiry - datetime.now(timezone.utc)).total_seconds() / 60
+                print(f"\nToken expires: {utc_str} ({local_str})")
+                print(f"Time remaining: ~{time_remaining:.0f} minutes")
+            else:
+                print("\nToken expires: Unknown")
             print(f"Account UUID: {auth.account_uuid}")
             print("\nNext steps:")
-            print("1. Copy the cache file to your Docker host:")
+            print("1. If running on a remote server, copy the cache file:")
             print(f"   scp {CACHE_FILE.name} root@YOUR_SERVER:/path/to/project/")
             print("2. The collector will auto-detect the cache file within 30 seconds")
             print("\nThe collector will automatically refresh the token every 10 minutes")
-            print("to keep your session alive.")
+            print("to keep your session alive indefinitely.")
             return True
 
         except Exception as e:
@@ -714,12 +723,18 @@ def show_status():
 
     if cache:
         remaining = cache.get("_time_remaining", 0)
-        hours = remaining / 3600
+        minutes = remaining / 60
         expiry = cache.get("_expiry_dt")
 
         print(f"  Status: VALID")
-        print(f"  Expires: {expiry.strftime('%Y-%m-%d %H:%M:%S') if expiry else 'Unknown'}")
-        print(f"  Time remaining: {hours:.1f} hours")
+        if expiry:
+            utc_str = expiry.strftime('%Y-%m-%d %H:%M:%S UTC')
+            local_time = expiry.astimezone()
+            local_str = local_time.strftime('%H:%M:%S %Z')
+            print(f"  Expires: {utc_str} ({local_str})")
+        else:
+            print(f"  Expires: Unknown")
+        print(f"  Time remaining: ~{minutes:.0f} minutes")
         print(f"  Location: {CACHE_FILE.name}")
 
         # Check for cookies (needed for refresh)

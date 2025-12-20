@@ -2221,15 +2221,21 @@ class Collector:
             if not self.opower_authenticated:
                 return
 
-            # Check if token is close to expiry (within 5 minutes)
+            # Check if token is close to expiry (within 15 minutes)
+            # Token lasts ~20 min, we check every 10 min, so refresh at 15 min mark
             if self.opower_client.token_expiry:
                 time_to_expiry = (self.opower_client.token_expiry - datetime.now(timezone.utc)).total_seconds()
-                if time_to_expiry > 300:  # More than 5 minutes left, skip refresh
+                if time_to_expiry > 900:  # More than 15 minutes left, skip refresh
                     self.opower_expiry_warned = False  # Reset warning flag
+                    # Log periodically so users know session is alive (every hour)
+                    if not hasattr(self, '_last_opower_alive_log') or \
+                       (datetime.now(timezone.utc) - self._last_opower_alive_log).total_seconds() >= 3600:
+                        logger.info(f"Opower: Session alive, token valid for {time_to_expiry/60:.0f} min")
+                        self._last_opower_alive_log = datetime.now(timezone.utc)
                     return
 
                 # Warn if getting close to expiry
-                if time_to_expiry < 120 and not self.opower_expiry_warned:
+                if time_to_expiry < 300 and not self.opower_expiry_warned:
                     logger.warning(f"Opower: Token expires in {time_to_expiry:.0f}s - attempting refresh...")
                     self.opower_expiry_warned = True
 
