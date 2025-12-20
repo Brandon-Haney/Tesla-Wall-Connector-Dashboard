@@ -57,3 +57,4 @@ htmlcov/
 
 # Scripts directory (local utilities, not part of core project)
 scripts/
+!scripts/comed_opower_setup.py
