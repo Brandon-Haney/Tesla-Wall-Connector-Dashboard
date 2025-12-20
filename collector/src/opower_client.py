@@ -120,6 +120,9 @@ class OpowerClient:
         self._needs_mfa: bool = False
         self._mfa_pending: bool = False
 
+        # Track when we last warned about token expiry (to avoid log spam)
+        self._last_expiry_warning: Optional[datetime] = None
+
     async def __aenter__(self):
         """Async context manager entry."""
         await self.connect()
@@ -200,9 +203,42 @@ class OpowerClient:
             expiry = datetime.fromisoformat(cache.get("expiry", ""))
 
             # Check if token is still valid
-            if expiry <= datetime.now(timezone.utc) + timedelta(minutes=2):
-                logger.debug("Cached token expired")
+            now = datetime.now(timezone.utc)
+            if expiry <= now + timedelta(minutes=2):
+                expired_ago = now - expiry
+                hours_ago = expired_ago.total_seconds() / 3600
+
+                # Only show full warning once per hour to avoid log spam
+                show_full_warning = (
+                    self._last_expiry_warning is None or
+                    (now - self._last_expiry_warning).total_seconds() >= 3600
+                )
+
+                if show_full_warning:
+                    logger.warning("=" * 60)
+                    logger.warning("OPOWER: TOKEN EXPIRED!")
+                    logger.warning(f"  Token expired: {expiry.strftime('%Y-%m-%d %H:%M:%S')} UTC ({hours_ago:.1f} hours ago)")
+                    logger.warning("  Meter data collection is STOPPED until re-authenticated.")
+                    logger.warning("")
+                    logger.warning("  To restore, run locally:")
+                    logger.warning("    python scripts/comed_opower_setup.py")
+                    logger.warning("")
+                    logger.warning("  Then copy .comed_opower_cache.json to your server.")
+                    logger.warning("  The collector will auto-detect within 30 seconds.")
+                    logger.warning("=" * 60)
+                    self._last_expiry_warning = now
+
                 return False
+
+            # Warn if token expires within 1 hour (only once per check cycle)
+            time_remaining = expiry - now
+            if time_remaining < timedelta(hours=1):
+                # Only warn once about upcoming expiry
+                if self._last_expiry_warning is None or (now - self._last_expiry_warning).total_seconds() >= 900:
+                    minutes_remaining = time_remaining.total_seconds() / 60
+                    logger.warning(f"OPOWER: Token expires in {minutes_remaining:.0f} minutes!")
+                    logger.warning("  Consider refreshing soon: python scripts/comed_opower_setup.py")
+                    self._last_expiry_warning = now
 
             self.opower_token = cache["token"]
             self.token_expiry = expiry
@@ -222,7 +258,10 @@ class OpowerClient:
             if cookies:
                 logger.info(f"Restored {len(cookies)} session cookies from cache")
 
-            logger.info(f"Using cached token (expires {expiry.strftime('%Y-%m-%d %H:%M:%S')})")
+            # Reset expiry warning flag on successful load
+            self._last_expiry_warning = None
+
+            logger.info(f"OPOWER: Authenticated (token expires {expiry.strftime('%Y-%m-%d %H:%M:%S')} UTC)")
             return True
 
         except (json.JSONDecodeError, KeyError, ValueError) as e:
