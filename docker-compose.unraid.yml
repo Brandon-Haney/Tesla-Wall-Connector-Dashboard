@@ -1,23 +1,67 @@
 # Docker Compose for Unraid Deployment
-# Uses pre-built images from GitHub Container Registry for easy updates
+# Uses local builds - same as main docker-compose.yml
 #
 # Setup:
-#   1. Copy .env.example to .env and configure
-#   2. Copy .secrets.example to .secrets and add your Tessie token
-#   3. Run: docker compose -f docker-compose.unraid.yml up -d
+#   1. Clone the repo to /mnt/user/appdata/twc-dashboard
+#   2. Run: docker compose -f docker-compose.unraid.yml up -d
+#   3. Credentials are auto-generated on first run - check .env
 #
 # Update:
-#   docker compose -f docker-compose.unraid.yml pull
-#   docker compose -f docker-compose.unraid.yml up -d
-#
-# Or enable Watchtower (included below) for automatic updates
+#   git pull
+#   docker compose -f docker-compose.unraid.yml up -d --build
 
 services:
+  # First-run initialization - generates .env with random tokens if not exists
+  init:
+    image: alpine:3.19
+    container_name: twc-init
+    volumes:
+      - ./:/config
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        if [ -f /config/.env ]; then
+          echo "✓ .env already exists, skipping initialization"
+          exit 0
+        fi
+
+        if [ ! -f /config/.env.example ]; then
+          echo "✗ .env.example not found!"
+          exit 1
+        fi
+
+        echo "Generating .env with random tokens..."
+
+        # Generate random tokens
+        INFLUX_TOKEN=$$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | head -c 48)
+        GRAFANA_PASS=$$(cat /dev/urandom | tr -dc 'a-zA-Z0-9!@#%' | head -c 16)
+        INFLUX_PASS=$$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | head -c 16)
+
+        # Copy template and replace placeholders
+        cp /config/.env.example /config/.env
+        sed -i "s|INFLUXDB_ADMIN_TOKEN=.*|INFLUXDB_ADMIN_TOKEN=$${INFLUX_TOKEN}|" /config/.env
+        sed -i "s|INFLUXDB_ADMIN_PASSWORD=.*|INFLUXDB_ADMIN_PASSWORD=$${INFLUX_PASS}|" /config/.env
+        sed -i "s|GRAFANA_ADMIN_PASSWORD=.*|GRAFANA_ADMIN_PASSWORD=$${GRAFANA_PASS}|" /config/.env
+
+        echo "============================================================"
+        echo "✓ Generated .env with random credentials"
+        echo ""
+        echo "  InfluxDB Token: $${INFLUX_TOKEN}"
+        echo "  InfluxDB Password: $${INFLUX_PASS}"
+        echo "  Grafana Password: $${GRAFANA_PASS}"
+        echo ""
+        echo "  These are saved in .env - keep this file secure!"
+        echo "============================================================"
+    restart: "no"
+
   # InfluxDB - Time Series Database
   influxdb:
     image: influxdb:2.7
     container_name: twc-influxdb
     restart: unless-stopped
+    depends_on:
+      init:
+        condition: service_completed_successfully
     ports:
       - "8086:8086"
     environment:
@@ -74,9 +118,11 @@ services:
       timeout: 10s
       retries: 3
 
-  # TWC Collector - Pre-built image from GHCR
+  # TWC Collector - Polls Wall Connectors and ComEd, writes to InfluxDB
   collector:
-    image: ghcr.io/${GITHUB_USERNAME:-brandon-haney}/twc-dashboard-collector:latest
+    build:
+      context: ./collector
+      dockerfile: Dockerfile
     container_name: twc-collector
     restart: unless-stopped
     environment:
@@ -105,18 +151,28 @@ services:
       - SMART_CHARGING_STOP_PERCENTILE=${SMART_CHARGING_STOP_PERCENTILE:-90}
       - SMART_CHARGING_RESUME_PERCENTILE=${SMART_CHARGING_RESUME_PERCENTILE:-75}
       - SMART_CHARGING_MIN_INTERVAL=${SMART_CHARGING_MIN_INTERVAL:-600}
+      # Opower (ComEd meter data) settings
+      - OPOWER_ENABLED=${OPOWER_ENABLED:-false}
+      - OPOWER_POLL_INTERVAL=${OPOWER_POLL_INTERVAL:-3600}
+      - OPOWER_TOKEN_REFRESH_INTERVAL=${OPOWER_TOKEN_REFRESH_INTERVAL:-600}
+      - OPOWER_MFA_METHOD=${OPOWER_MFA_METHOD:-email}
       - TZ=${TZ:-America/Chicago}
     volumes:
+      # Mount secrets file (contains Tessie API token, etc.)
       - ./.secrets:/app/.secrets:ro
+      # Mount project root so collector can access Opower cache file
+      - ./:/app/project:ro
     depends_on:
       influxdb:
         condition: service_healthy
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
-  # TWC Dashboard API - Pre-built image from GHCR
+  # TWC Dashboard API - REST API and WebSocket for data access
   api:
-    image: ghcr.io/${GITHUB_USERNAME:-brandon-haney}/twc-dashboard-api:latest
+    build:
+      context: ./api
+      dockerfile: Dockerfile
     container_name: twc-api
     restart: unless-stopped
     ports:
@@ -136,25 +192,6 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-
-  # Watchtower - Automatic container updates
-  # Watches for new images and automatically updates containers
-  watchtower:
-    image: containrrr/watchtower
-    container_name: twc-watchtower
-    restart: unless-stopped
-    environment:
-      - WATCHTOWER_CLEANUP=true
-      - WATCHTOWER_POLL_INTERVAL=3600  # Check every hour
-      - WATCHTOWER_INCLUDE_STOPPED=false
-      - WATCHTOWER_REVIVE_STOPPED=false
-      # Only watch our containers
-      - WATCHTOWER_SCOPE=twc-dashboard
-      - TZ=${TZ:-America/Chicago}
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    labels:
-      - "com.centurylinklabs.watchtower.scope=twc-dashboard"
 
 volumes:
   influxdb-data:

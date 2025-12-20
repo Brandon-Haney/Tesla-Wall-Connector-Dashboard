@@ -97,35 +97,17 @@ docker compose -f docker-compose.unraid.yml restart collector
 
 ---
 
-## Automatic Updates
+## Updating
 
-The deployment includes **Watchtower** which automatically checks for and applies updates every hour.
-
-### How It Works
-
-1. When you push changes to your GitHub repository
-2. GitHub Actions builds new Docker images
-3. Images are pushed to GitHub Container Registry (GHCR)
-4. Watchtower detects the new images
-5. Containers are automatically updated
-
-### Manual Update
-
-If you want to update immediately:
+To update to the latest version:
 
 ```bash
 cd /mnt/user/appdata/twc-dashboard
-docker compose -f docker-compose.unraid.yml pull
-docker compose -f docker-compose.unraid.yml up -d
+git pull
+docker compose -f docker-compose.unraid.yml up -d --build
 ```
 
-### Disable Automatic Updates
-
-To disable Watchtower, comment out the watchtower service in `docker-compose.unraid.yml` or stop it:
-
-```bash
-docker stop twc-watchtower
-```
+The `--build` flag ensures the collector and API containers are rebuilt with the new code.
 
 ---
 
