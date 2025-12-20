@@ -1,6 +1,6 @@
 # Unraid Deployment Guide
 
-This guide walks you through deploying the Tesla Wall Connector Dashboard on an Unraid server with automatic updates enabled.
+This guide walks you through deploying the Tesla Wall Connector Dashboard on an Unraid server.
 
 ## Prerequisites
 
@@ -222,10 +222,10 @@ docker compose -f docker-compose.unraid.yml restart
 - Check `TESSIE_ENABLED=true` in `.env`
 - Look for auth errors in collector logs
 
-**Images not pulling**
-- Check that GitHub Actions has run and published images
-- Verify images exist at ghcr.io/brandon-haney/twc-dashboard-collector
-- Images are public, no login required
+**Build failures**
+- Check Docker logs: `docker compose -f docker-compose.unraid.yml logs`
+- Ensure you have enough disk space for building images
+- Try rebuilding: `docker compose -f docker-compose.unraid.yml build --no-cache`
 
 ---
 

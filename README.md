@@ -395,21 +395,20 @@ python -m src.main
 
 ## Unraid Deployment
 
-For Unraid users, a dedicated deployment guide with automatic updates is available:
+For Unraid users, a dedicated deployment guide is available:
 
 1. **Clone to Unraid**: `/mnt/user/appdata/twc-dashboard`
-2. **Configure**: Copy `.env.example` to `.env` and `.secrets.example` to `.secrets`
-3. **Deploy**: Use `docker-compose.unraid.yml` with Docker Compose Manager
-4. **Auto-Updates**: Watchtower automatically pulls new images when you push to GitHub
+2. **Deploy**: `docker compose -f docker-compose.unraid.yml up -d`
+3. **Credentials**: Auto-generated on first run - check `.env`
 
 See [docs/UNRAID_DEPLOYMENT.md](docs/UNRAID_DEPLOYMENT.md) for complete instructions.
 
-### Automatic Updates
+### Updating
 
-When you push changes to your GitHub repository:
-1. GitHub Actions builds new Docker images
-2. Images are published to GitHub Container Registry
-3. Watchtower on Unraid detects and applies updates automatically
+```bash
+git pull
+docker compose -f docker-compose.unraid.yml up -d --build
+```
 
 ## Future Enhancements
 
