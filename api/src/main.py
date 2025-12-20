@@ -21,6 +21,10 @@ from .models import (
     HealthStatus,
     VehicleStatus,
     VehicleSession,
+    MeterUsage,
+    MeterCost,
+    BillSummary,
+    MeterComparison,
 )
 from .influx_client import influx_client
 from .export import (
@@ -251,6 +255,86 @@ async def get_all_vehicle_sessions(
 
 
 # =============================================================================
+# Meter Data Endpoints (ComEd Opower Integration)
+# =============================================================================
+
+@app.get("/meter/usage", response_model=List[MeterUsage], tags=["Meter Data"])
+async def get_meter_usage(
+    start: datetime = Query(default=None, description="Start date (default: 30 days ago)"),
+    end: datetime = Query(default=None, description="End date (default: now)"),
+    resolution: str = Query(default="DAY", description="Resolution: DAY, HOUR, or HALF_HOUR"),
+):
+    """Get actual meter usage from ComEd smart meter.
+
+    Returns kWh readings from your smart meter at the specified resolution.
+    Requires Opower integration to be configured.
+    """
+    if end is None:
+        end = datetime.utcnow()
+    if start is None:
+        start = end - timedelta(days=30)
+    return influx_client.get_meter_usage(start, end, resolution)
+
+
+@app.get("/meter/cost", response_model=List[MeterCost], tags=["Meter Data"])
+async def get_meter_cost(
+    start: datetime = Query(default=None, description="Start date (default: 30 days ago)"),
+    end: datetime = Query(default=None, description="End date (default: now)"),
+    resolution: str = Query(default="DAY", description="Resolution: DAY or HOUR"),
+):
+    """Get actual billed costs from ComEd.
+
+    Returns actual costs including all fees, delivery charges, and taxes.
+    This is the same data that appears on your ComEd bill.
+    Requires Opower integration to be configured.
+    """
+    if end is None:
+        end = datetime.utcnow()
+    if start is None:
+        start = end - timedelta(days=30)
+    return influx_client.get_meter_cost(start, end, resolution)
+
+
+@app.get("/meter/bills", response_model=List[BillSummary], tags=["Meter Data"])
+async def get_bills(
+    start: datetime = Query(default=None, description="Start date (default: 1 year ago)"),
+    end: datetime = Query(default=None, description="End date (default: now)"),
+):
+    """Get monthly bill summaries from ComEd.
+
+    Returns bill-level summaries including total usage, costs, and effective rate.
+    Requires Opower integration to be configured.
+    """
+    if end is None:
+        end = datetime.utcnow()
+    if start is None:
+        start = end - timedelta(days=365)
+    return influx_client.get_bills(start, end)
+
+
+@app.get("/meter/comparison", response_model=MeterComparison, tags=["Meter Data"])
+async def get_meter_comparison(
+    start: datetime = Query(default=None, description="Start date (default: 30 days ago)"),
+    end: datetime = Query(default=None, description="End date (default: now)"),
+):
+    """Compare calculated EV charging costs vs actual meter costs.
+
+    Returns a comparison showing:
+    - Calculated EV charging energy and costs from dashboard
+    - Actual whole-house usage and costs from meter
+    - What percentage of your electricity goes to EV charging
+    - Average rates from both sources
+
+    Requires Opower integration to be configured.
+    """
+    if end is None:
+        end = datetime.utcnow()
+    if start is None:
+        start = end - timedelta(days=30)
+    return influx_client.get_meter_comparison(start, end)
+
+
+# =============================================================================
 # Export Endpoints
 # =============================================================================
 
@@ -367,6 +451,54 @@ async def export_report_pdf(
     return Response(
         content=pdf_content,
         media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@app.get("/export/meter.csv", tags=["Export"])
+async def export_meter_csv(
+    start: datetime = Query(default=None, description="Start date (default: 30 days ago)"),
+    end: datetime = Query(default=None, description="End date (default: now)"),
+    resolution: str = Query(default="DAY", description="Resolution: DAY, HOUR, or HALF_HOUR"),
+):
+    """Export meter usage and cost data as CSV.
+
+    Requires Opower integration to be configured.
+    """
+    if end is None:
+        end = datetime.utcnow()
+    if start is None:
+        start = end - timedelta(days=30)
+
+    usage = influx_client.get_meter_usage(start, end, resolution)
+    costs = influx_client.get_meter_cost(start, end, resolution)
+
+    # Build CSV with usage and cost data merged by timestamp
+    import csv
+    import io
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["timestamp", "usage_kwh", "cost_cents", "effective_rate_cents"])
+
+    # Create lookup dict for costs
+    cost_map = {c.timestamp.isoformat(): c for c in costs}
+
+    for u in usage:
+        ts = u.timestamp.isoformat()
+        cost = cost_map.get(ts)
+        writer.writerow([
+            ts,
+            f"{u.kwh:.3f}",
+            f"{cost.cost_cents:.2f}" if cost else "",
+            f"{cost.effective_rate_cents:.2f}" if cost else "",
+        ])
+
+    csv_content = output.getvalue()
+    filename = f"comed_meter_{start.strftime('%Y%m%d')}_{end.strftime('%Y%m%d')}.csv"
+    return Response(
+        content=csv_content,
+        media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
 

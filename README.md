@@ -254,6 +254,11 @@ The dashboard includes a REST API for programmatic access to your charging data.
 | `GET /export/sessions.json` | Export sessions as JSON |
 | `GET /export/prices.csv` | Export prices as CSV |
 | `GET /export/report.pdf` | Generate PDF report |
+| `GET /meter/usage` | Actual meter usage (Opower) |
+| `GET /meter/cost` | Actual billed costs (Opower) |
+| `GET /meter/bills` | Monthly bill summaries (Opower) |
+| `GET /meter/comparison` | Compare EV costs vs meter |
+| `GET /export/meter.csv` | Export meter data as CSV |
 | `WS /ws` | WebSocket for real-time updates |
 
 ### Interactive Documentation

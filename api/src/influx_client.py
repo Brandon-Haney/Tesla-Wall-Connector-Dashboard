@@ -17,6 +17,10 @@ from .models import (
     EnergyDataPoint,
     VehicleStatus,
     VehicleSession,
+    MeterUsage,
+    MeterCost,
+    BillSummary,
+    MeterComparison,
 )
 
 logger = logging.getLogger(__name__)
@@ -457,6 +461,140 @@ class InfluxClient:
         except Exception as e:
             logger.error(f"Failed to get vehicle sessions: {e}")
             return []
+
+    # =========================================================================
+    # Meter Data Methods (ComEd Opower Integration)
+    # =========================================================================
+
+    def get_meter_usage(
+        self,
+        start_date: datetime,
+        end_date: datetime,
+        resolution: str = "DAY",
+    ) -> List[MeterUsage]:
+        """Get actual meter usage from ComEd smart meter."""
+        query = f'''
+        from(bucket: "{self.bucket}")
+            |> range(start: {start_date.isoformat()}Z, stop: {end_date.isoformat()}Z)
+            |> filter(fn: (r) => r._measurement == "comed_meter_usage")
+            |> filter(fn: (r) => r.resolution == "{resolution}")
+            |> filter(fn: (r) => r._field == "kwh")
+        '''
+        try:
+            result = self.query_api.query(query, org=self.org)
+            usage_data = []
+            for table in result:
+                for record in table.records:
+                    usage_data.append(MeterUsage(
+                        timestamp=record.get_time(),
+                        kwh=float(record.get_value()),
+                        resolution=resolution,
+                    ))
+            return usage_data
+        except Exception as e:
+            logger.error(f"Failed to get meter usage: {e}")
+            return []
+
+    def get_meter_cost(
+        self,
+        start_date: datetime,
+        end_date: datetime,
+        resolution: str = "DAY",
+    ) -> List[MeterCost]:
+        """Get actual billed costs from ComEd."""
+        query = f'''
+        from(bucket: "{self.bucket}")
+            |> range(start: {start_date.isoformat()}Z, stop: {end_date.isoformat()}Z)
+            |> filter(fn: (r) => r._measurement == "comed_meter_cost")
+            |> filter(fn: (r) => r.resolution == "{resolution}")
+            |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")
+        '''
+        try:
+            result = self.query_api.query(query, org=self.org)
+            cost_data = []
+            for table in result:
+                for record in table.records:
+                    values = record.values
+                    cost_data.append(MeterCost(
+                        timestamp=values.get("_time", datetime.utcnow()),
+                        kwh=float(values.get("kwh", 0) or 0),
+                        cost_cents=float(values.get("cost_cents", 0) or 0),
+                        effective_rate_cents=float(values.get("effective_rate_cents", 0) or 0),
+                        resolution=resolution,
+                    ))
+            return cost_data
+        except Exception as e:
+            logger.error(f"Failed to get meter cost: {e}")
+            return []
+
+    def get_bills(
+        self,
+        start_date: datetime,
+        end_date: datetime,
+    ) -> List[BillSummary]:
+        """Get monthly bill summaries from ComEd."""
+        query = f'''
+        from(bucket: "{self.bucket}")
+            |> range(start: {start_date.isoformat()}Z, stop: {end_date.isoformat()}Z)
+            |> filter(fn: (r) => r._measurement == "comed_bill")
+            |> pivot(rowKey: ["_time", "estimated"], columnKey: ["_field"], valueColumn: "_value")
+        '''
+        try:
+            result = self.query_api.query(query, org=self.org)
+            bills = []
+            for table in result:
+                for record in table.records:
+                    values = record.values
+                    # Bill end date is the timestamp, start is ~30 days before
+                    end_time = values.get("_time", datetime.utcnow())
+                    start_time = end_time - timedelta(days=30)
+                    bills.append(BillSummary(
+                        start_date=start_time,
+                        end_date=end_time,
+                        total_kwh=float(values.get("total_kwh", 0) or 0),
+                        total_cost_dollars=float(values.get("total_cost_dollars", 0) or 0),
+                        usage_charges_dollars=float(values.get("usage_charges_dollars", 0) or 0),
+                        non_usage_charges_dollars=float(values.get("non_usage_charges_dollars", 0) or 0),
+                        effective_rate_cents=float(values.get("effective_rate_cents", 0) or 0),
+                        is_estimated=str(values.get("estimated", "false")).lower() == "true",
+                    ))
+            return bills
+        except Exception as e:
+            logger.error(f"Failed to get bills: {e}")
+            return []
+
+    def get_meter_comparison(
+        self,
+        start_date: datetime,
+        end_date: datetime,
+    ) -> MeterComparison:
+        """Compare calculated EV charging costs vs actual meter costs."""
+        # Get calculated costs from charging sessions
+        sessions = self.get_sessions(start_date, end_date)
+        calculated_kwh = sum(s.energy_wh / 1000 for s in sessions)
+        calculated_cost = sum(s.full_cost_cents for s in sessions)
+
+        # Get actual costs from meter
+        meter_costs = self.get_meter_cost(start_date, end_date, "DAY")
+        actual_kwh = sum(m.kwh for m in meter_costs)
+        actual_cost = sum(m.cost_cents for m in meter_costs)
+
+        # Calculate derived metrics
+        ev_percentage = (calculated_kwh / actual_kwh * 100) if actual_kwh > 0 else 0
+        calculated_rate = (calculated_cost / calculated_kwh) if calculated_kwh > 0 else 0
+        actual_rate = (actual_cost / actual_kwh) if actual_kwh > 0 else 0
+
+        return MeterComparison(
+            start_date=start_date,
+            end_date=end_date,
+            calculated_kwh=calculated_kwh,
+            calculated_cost_cents=calculated_cost,
+            actual_kwh=actual_kwh,
+            actual_cost_cents=actual_cost,
+            ev_percentage_of_usage=ev_percentage,
+            calculated_rate_cents=calculated_rate,
+            actual_rate_cents=actual_rate,
+        )
 
 
 # Global client instance

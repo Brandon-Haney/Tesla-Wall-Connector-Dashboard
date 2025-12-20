@@ -158,3 +158,55 @@ class VehicleSession(BaseModel):
     soc_gained: int = 0
     peak_power_kw: float = 0.0
     charger_type: str = ""  # TWC, Supercharger, etc.
+
+
+# =============================================================================
+# Meter Data Models (ComEd Opower Integration)
+# =============================================================================
+
+class MeterUsage(BaseModel):
+    """Actual meter usage from ComEd smart meter."""
+
+    timestamp: datetime
+    kwh: float = 0.0
+    resolution: str = "DAY"  # DAY, HOUR, or HALF_HOUR
+
+
+class MeterCost(BaseModel):
+    """Actual billed cost from ComEd (includes all fees)."""
+
+    timestamp: datetime
+    kwh: float = 0.0
+    cost_cents: float = 0.0
+    effective_rate_cents: float = 0.0  # Actual cost per kWh
+    resolution: str = "DAY"  # DAY or HOUR
+
+
+class BillSummary(BaseModel):
+    """Monthly bill summary from ComEd."""
+
+    start_date: datetime
+    end_date: datetime
+    total_kwh: float = 0.0
+    total_cost_dollars: float = 0.0
+    usage_charges_dollars: float = 0.0
+    non_usage_charges_dollars: float = 0.0
+    effective_rate_cents: float = 0.0  # Total cost / kWh
+    is_estimated: bool = False
+
+
+class MeterComparison(BaseModel):
+    """Comparison of calculated vs actual meter costs."""
+
+    start_date: datetime
+    end_date: datetime
+    # Calculated from dashboard (EV charging sessions)
+    calculated_kwh: float = 0.0
+    calculated_cost_cents: float = 0.0
+    # Actual from meter (whole house)
+    actual_kwh: float = 0.0
+    actual_cost_cents: float = 0.0
+    # Derived metrics
+    ev_percentage_of_usage: float = 0.0  # What % of electricity is EV charging
+    calculated_rate_cents: float = 0.0  # Avg rate from dashboard
+    actual_rate_cents: float = 0.0  # Avg rate from meter
