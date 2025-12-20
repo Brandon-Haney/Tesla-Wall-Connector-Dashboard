@@ -389,7 +389,7 @@ For Unraid users, a dedicated deployment guide is available:
 
 1. **Clone to Unraid**: `/mnt/user/appdata/twc-dashboard`
 2. **Deploy**: `docker compose up -d`
-3. **Credentials**: Auto-generated on first run - check `.env`
+3. **Credentials**: Default is `admin` / `changeme`
 
 See [docs/UNRAID_DEPLOYMENT.md](docs/UNRAID_DEPLOYMENT.md) for complete instructions.
 

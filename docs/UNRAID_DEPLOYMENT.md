@@ -210,8 +210,8 @@ docker compose restart
 - Wait a few minutes for data to accumulate
 
 **Grafana login fails**
-- Default: admin / your_grafana_password (from .env)
-- Check `GRAFANA_ADMIN_PASSWORD` in .env
+- Default credentials: admin / changeme
+- If using custom .env, check `GRAFANA_ADMIN_PASSWORD`
 
 **Fleet API not working**
 - Verify Tessie token in `.secrets` file

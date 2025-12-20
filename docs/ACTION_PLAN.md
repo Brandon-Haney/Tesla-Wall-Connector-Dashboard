@@ -1092,7 +1092,7 @@ TESSIE_ACCESS_TOKEN=your_tessie_token_here
 ```
 
 ### Access URLs
-- Grafana: http://localhost:3000 (admin/your_grafana_password)
+- Grafana: http://localhost:3080 (admin/changeme)
 - REST API: http://localhost:8000
 - API Docs: http://localhost:8000/docs
 - InfluxDB: http://localhost:8086
