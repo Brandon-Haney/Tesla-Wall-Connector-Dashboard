@@ -7,6 +7,7 @@ A real-time monitoring dashboard for Tesla Wall Connector Gen 3 chargers with Co
 - **Real-time Monitoring**: Live power draw, voltage, current, and temperature data
 - **Multi-Charger Support**: Monitor multiple Wall Connectors in one dashboard (via Fleet API)
 - **ComEd Hourly Pricing**: Live electricity pricing with cost calculations
+- **ComEd Opower Integration**: Actual meter data and billed costs from your smart meter (optional)
 - **Session Tracking**: Automatic detection and logging of charging sessions with real-time cost tracking
 - **Full Cost Estimation**: Includes supply + delivery rates for accurate cost calculations (based on ComEd bill analysis)
 - **Real-time Session Cost**: See charging costs accumulate during active sessions using actual prices
@@ -312,6 +313,36 @@ Pricing data is fetched from ComEd's public API:
 - Current hour average price
 - 5-minute price updates
 - Historical pricing data
+
+## ComEd Opower Integration (Optional)
+
+For ComEd customers who want to compare dashboard estimates with actual billed costs, Opower integration provides:
+
+- **Actual meter data** from your smart meter (same data as your bill)
+- **Billed costs** including all fees, delivery charges, and taxes
+- **Bill history** with monthly summaries
+- **Historical data** back to June 2023
+
+This helps you validate dashboard cost calculations against your actual ComEd bills and see what percentage of your electricity goes to EV charging.
+
+### Setup
+
+1. Enable in `.env`:
+   ```env
+   OPOWER_ENABLED=true
+   ```
+
+2. Run the setup script locally (requires MFA):
+   ```bash
+   pip install httpx python-dotenv
+   python scripts/comed_opower_setup.py
+   ```
+
+3. Enter your ComEd credentials and MFA code when prompted
+
+The collector auto-detects the cache file within 30 seconds - no restart needed.
+
+See [docs/COMED_OPOWER_SETUP.md](docs/COMED_OPOWER_SETUP.md) for complete setup instructions.
 
 ## Troubleshooting
 
