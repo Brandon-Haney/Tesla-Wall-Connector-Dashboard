@@ -424,6 +424,7 @@ Inspired by:
 - [Powerwall-Dashboard](https://github.com/jasonacox/Powerwall-Dashboard)
 - [tesla-gen3wc-monitor](https://github.com/averysmalldog/tesla-gen3wc-monitor)
 - [tesla-wall-connector](https://github.com/einarhauks/tesla-wall-connector)
+- [opower](https://github.com/tronikos/opower) - ComEd Opower API reference
 
 ## License
 
