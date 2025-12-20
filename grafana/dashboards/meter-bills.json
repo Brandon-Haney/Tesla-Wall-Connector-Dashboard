@@ -1,0 +1,1114 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "gridPos": { "h": 2, "w": 24, "x": 0, "y": 0 },
+      "id": 1,
+      "options": {
+        "content": "# Meter & Bills (Opower)\nActual electricity usage and costs from your ComEd smart meter. This is the **ground truth** data that appears on your bill, including all fees, delivery charges, and taxes. Data updates daily with 24-48 hour delay.",
+        "mode": "markdown"
+      },
+      "title": "",
+      "transparent": true,
+      "type": "text"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 2 },
+      "id": 100,
+      "panels": [],
+      "title": "Current Status",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "description": "Shows Connected if Opower data was received in the last 48 hours",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [
+            { "options": { "1": { "color": "green", "index": 0, "text": "Connected" } }, "type": "value" },
+            { "options": { "0": { "color": "red", "index": 1, "text": "Expired" } }, "type": "value" }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 3 },
+      "id": 2,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "value"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: -48h)\n  |> filter(fn: (r) => r._measurement == \"comed_meter_usage\")\n  |> filter(fn: (r) => r._field == \"kwh\")\n  |> count()\n  |> map(fn: (r) => ({r with _value: if r._value > 0 then 1 else 0}))\n  |> keep(columns: [\"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Opower Status",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "description": "Today's electricity usage from smart meter (if available)",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "noValue": "Pending",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] },
+          "unit": "kwatth"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 3 },
+      "id": 3,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["sum"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: today())\n  |> filter(fn: (r) => r._measurement == \"comed_meter_usage\")\n  |> filter(fn: (r) => r._field == \"kwh\")\n  |> filter(fn: (r) => r.resolution == \"DAY\")\n  |> sum()\n  |> keep(columns: [\"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Today's Usage",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "description": "Yesterday's electricity usage from smart meter",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "noValue": "No data",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] },
+          "unit": "kwatth"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 3 },
+      "id": 4,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["sum"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "import \"date\"\n\nyesterday_start = date.truncate(t: date.add(d: -1d, to: now()), unit: 1d)\nyesterday_end = date.truncate(t: now(), unit: 1d)\n\nfrom(bucket: \"twc_dashboard\")\n  |> range(start: yesterday_start, stop: yesterday_end)\n  |> filter(fn: (r) => r._measurement == \"comed_meter_usage\")\n  |> filter(fn: (r) => r._field == \"kwh\")\n  |> filter(fn: (r) => r.resolution == \"DAY\")\n  |> sum()\n  |> keep(columns: [\"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Yesterday's Usage",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "description": "Total electricity usage this billing period (last 30 days)",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "noValue": "No data",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] },
+          "unit": "kwatth"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 3 },
+      "id": 5,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["sum"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"comed_meter_usage\")\n  |> filter(fn: (r) => r._field == \"kwh\")\n  |> filter(fn: (r) => r.resolution == \"DAY\")\n  |> group()\n  |> sum()\n  |> keep(columns: [\"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Month-to-Date Usage",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "description": "Total electricity cost this billing period (last 30 days)",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 2,
+          "mappings": [],
+          "noValue": "No data",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "currencyUSD"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 3 },
+      "id": 6,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["sum"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"comed_meter_cost\")\n  |> filter(fn: (r) => r._field == \"cost_dollars\")\n  |> filter(fn: (r) => r.resolution == \"DAY\")\n  |> group()\n  |> sum()\n  |> keep(columns: [\"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Month-to-Date Cost",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "description": "Your true all-in rate: total cost / total kWh (includes all fees)",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 2,
+          "mappings": [],
+          "noValue": "No data",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 12 },
+              { "color": "orange", "value": 15 },
+              { "color": "red", "value": 18 }
+            ]
+          },
+          "unit": "cent"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 3 },
+      "id": 7,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["mean"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"comed_meter_cost\")\n  |> filter(fn: (r) => r._field == \"effective_rate_cents\")\n  |> filter(fn: (r) => r.resolution == \"DAY\")\n  |> mean()\n  |> keep(columns: [\"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Effective Rate (All-In)",
+      "type": "stat"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 7 },
+      "id": 101,
+      "panels": [],
+      "title": "Daily Usage & Cost",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "description": "Daily electricity usage from your ComEd smart meter",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineWidth": 1,
+            "scaleDistribution": { "type": "linear" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] },
+          "unit": "kwatth"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "id": 10,
+      "options": {
+        "barRadius": 0.1,
+        "barWidth": 0.8,
+        "groupWidth": 0.7,
+        "legend": { "calcs": ["sum", "mean"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "orientation": "auto",
+        "showValue": "never",
+        "stacking": "none",
+        "tooltip": { "mode": "single", "sort": "none" },
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 150
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"comed_meter_usage\")\n  |> filter(fn: (r) => r._field == \"kwh\")\n  |> filter(fn: (r) => r.resolution == \"DAY\")\n  |> aggregateWindow(every: 1d, fn: sum, createEmpty: false, timeSrc: \"_start\")\n  |> rename(columns: {_value: \"Usage\"})\n  |> keep(columns: [\"_time\", \"Usage\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Daily Electricity Usage",
+      "type": "barchart"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "description": "Daily electricity cost from your ComEd bill (includes all fees)",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineWidth": 1,
+            "scaleDistribution": { "type": "linear" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "currencyUSD"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "id": 11,
+      "options": {
+        "barRadius": 0.1,
+        "barWidth": 0.8,
+        "groupWidth": 0.7,
+        "legend": { "calcs": ["sum", "mean"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "orientation": "auto",
+        "showValue": "never",
+        "stacking": "none",
+        "tooltip": { "mode": "single", "sort": "none" },
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 150
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"comed_meter_cost\")\n  |> filter(fn: (r) => r._field == \"cost_dollars\")\n  |> filter(fn: (r) => r.resolution == \"DAY\")\n  |> aggregateWindow(every: 1d, fn: sum, createEmpty: false, timeSrc: \"_start\")\n  |> rename(columns: {_value: \"Cost\"})\n  |> keep(columns: [\"_time\", \"Cost\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Daily Electricity Cost",
+      "type": "barchart"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 16 },
+      "id": 102,
+      "panels": [],
+      "title": "EV Charging Analysis",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "description": "Percentage of total home electricity used for EV charging (last 30 days)",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "max": 100,
+          "min": 0,
+          "noValue": "No data",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "blue", "value": null },
+              { "color": "green", "value": 20 },
+              { "color": "yellow", "value": 50 },
+              { "color": "orange", "value": 75 }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 17 },
+      "id": 20,
+      "options": {
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "ev_kwh = from(bucket: \"twc_dashboard\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"fleet_charge_session\")\n  |> filter(fn: (r) => r._field == \"energy_kwh\")\n  |> group()\n  |> sum()\n  |> findRecord(fn: (key) => true, idx: 0)\n\ntotal_kwh = from(bucket: \"twc_dashboard\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"comed_meter_usage\")\n  |> filter(fn: (r) => r._field == \"kwh\")\n  |> filter(fn: (r) => r.resolution == \"DAY\")\n  |> group()\n  |> sum()\n  |> findRecord(fn: (key) => true, idx: 0)\n\nfrom(bucket: \"twc_dashboard\")\n  |> range(start: -1m)\n  |> limit(n: 1)\n  |> map(fn: (r) => ({_value: if total_kwh._value > 0.0 then (ev_kwh._value / total_kwh._value) * 100.0 else 0.0}))\n  |> keep(columns: [\"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "EV % of Total Usage",
+      "type": "gauge"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "description": "Total EV charging energy from Fleet API (last 30 days)",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "noValue": "No data",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "kwatth"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 17 },
+      "id": 21,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["sum"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"fleet_charge_session\")\n  |> filter(fn: (r) => r._field == \"energy_kwh\")\n  |> group()\n  |> sum()\n  |> keep(columns: [\"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "EV Charging (30d)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "description": "Total home electricity usage from smart meter (last 30 days)",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "noValue": "No data",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] },
+          "unit": "kwatth"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 17 },
+      "id": 22,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["sum"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"comed_meter_usage\")\n  |> filter(fn: (r) => r._field == \"kwh\")\n  |> filter(fn: (r) => r.resolution == \"DAY\")\n  |> group()\n  |> sum()\n  |> keep(columns: [\"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Home Usage (30d)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "description": "Non-EV electricity usage (Home - EV charging) over last 30 days",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "noValue": "No data",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "purple", "value": null }] },
+          "unit": "kwatth"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 17 },
+      "id": 23,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "ev_kwh = from(bucket: \"twc_dashboard\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"fleet_charge_session\")\n  |> filter(fn: (r) => r._field == \"energy_kwh\")\n  |> group()\n  |> sum()\n  |> findRecord(fn: (key) => true, idx: 0)\n\ntotal_kwh = from(bucket: \"twc_dashboard\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"comed_meter_usage\")\n  |> filter(fn: (r) => r._field == \"kwh\")\n  |> filter(fn: (r) => r.resolution == \"DAY\")\n  |> group()\n  |> sum()\n  |> findRecord(fn: (key) => true, idx: 0)\n\nfrom(bucket: \"twc_dashboard\")\n  |> range(start: -1m)\n  |> limit(n: 1)\n  |> map(fn: (r) => ({_value: total_kwh._value - ev_kwh._value}))\n  |> keep(columns: [\"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Non-EV Usage (30d)",
+      "type": "stat"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 },
+      "id": 103,
+      "panels": [],
+      "title": "Cost Comparison",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "description": "Compare our calculated EV charging cost vs actual Opower cost (last 30 days)",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineWidth": 1,
+            "scaleDistribution": { "type": "linear" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "currencyUSD"
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Calculated (EV)" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "Actual (Total)" }, "properties": [{ "id": "color", "value": { "fixedColor": "blue", "mode": "fixed" } }] }
+        ]
+      },
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 24 },
+      "id": 30,
+      "options": {
+        "barRadius": 0.1,
+        "barWidth": 0.6,
+        "groupWidth": 0.7,
+        "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "orientation": "horizontal",
+        "showValue": "always",
+        "stacking": "none",
+        "tooltip": { "mode": "single", "sort": "none" },
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 0
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"fleet_charge_session\")\n  |> filter(fn: (r) => r._field == \"full_cost_dollars\")\n  |> group()\n  |> sum()\n  |> rename(columns: {_value: \"Calculated (EV)\"})\n  |> keep(columns: [\"Calculated (EV)\"])",
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"comed_meter_cost\")\n  |> filter(fn: (r) => r._field == \"cost_dollars\")\n  |> filter(fn: (r) => r.resolution == \"DAY\")\n  |> group()\n  |> sum()\n  |> rename(columns: {_value: \"Actual (Total)\"})\n  |> keep(columns: [\"Actual (Total)\"])",
+          "refId": "B"
+        }
+      ],
+      "title": "30-Day Cost Comparison",
+      "type": "barchart"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "description": "Difference between calculated and actual (helps tune delivery_rate). Positive = underestimating.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 2,
+          "mappings": [],
+          "noValue": "No data",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": -10 },
+              { "color": "green", "value": -5 },
+              { "color": "green", "value": 5 },
+              { "color": "yellow", "value": 10 },
+              { "color": "red", "value": 20 }
+            ]
+          },
+          "unit": "currencyUSD"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 4, "x": 8, "y": 24 },
+      "id": 31,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "calculated = from(bucket: \"twc_dashboard\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"fleet_charge_session\")\n  |> filter(fn: (r) => r._field == \"full_cost_dollars\")\n  |> group()\n  |> sum()\n  |> findRecord(fn: (key) => true, idx: 0)\n\nactual = from(bucket: \"twc_dashboard\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"comed_meter_cost\")\n  |> filter(fn: (r) => r._field == \"cost_dollars\")\n  |> filter(fn: (r) => r.resolution == \"DAY\")\n  |> group()\n  |> sum()\n  |> findRecord(fn: (key) => true, idx: 0)\n\nfrom(bucket: \"twc_dashboard\")\n  |> range(start: -1m)\n  |> limit(n: 1)\n  |> map(fn: (r) => ({_value: actual._value - calculated._value}))\n  |> keep(columns: [\"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Cost Difference",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "description": "Our calculated effective rate (supply + delivery from Fleet sessions)",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 2,
+          "mappings": [],
+          "noValue": "No data",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 12 },
+              { "color": "orange", "value": 15 },
+              { "color": "red", "value": 18 }
+            ]
+          },
+          "unit": "cent"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 24 },
+      "id": 32,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "cost = from(bucket: \"twc_dashboard\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"fleet_charge_session\")\n  |> filter(fn: (r) => r._field == \"full_cost_dollars\")\n  |> group()\n  |> sum()\n  |> findRecord(fn: (key) => true, idx: 0)\n\nenergy = from(bucket: \"twc_dashboard\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"fleet_charge_session\")\n  |> filter(fn: (r) => r._field == \"energy_kwh\")\n  |> group()\n  |> sum()\n  |> findRecord(fn: (key) => true, idx: 0)\n\nfrom(bucket: \"twc_dashboard\")\n  |> range(start: -1m)\n  |> limit(n: 1)\n  |> map(fn: (r) => ({_value: if energy._value > 0.0 then (cost._value / energy._value) * 100.0 else 0.0}))\n  |> keep(columns: [\"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Calculated Rate (EV)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "description": "True effective rate from Opower (total cost / total kWh for all home usage)",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 2,
+          "mappings": [],
+          "noValue": "No data",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 12 },
+              { "color": "orange", "value": 15 },
+              { "color": "red", "value": 18 }
+            ]
+          },
+          "unit": "cent"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 24 },
+      "id": 33,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["mean"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"comed_meter_cost\")\n  |> filter(fn: (r) => r._field == \"effective_rate_cents\")\n  |> filter(fn: (r) => r.resolution == \"DAY\")\n  |> mean()\n  |> keep(columns: [\"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Actual Rate (All Home)",
+      "type": "stat"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 30 },
+      "id": 104,
+      "panels": [],
+      "title": "Bill History",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "description": "Monthly bill history from ComEd Opower",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "custom": { "align": "auto", "cellOptions": { "type": "auto" }, "inspect": false },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Month" }, "properties": [{ "id": "custom.width", "value": 120 }] },
+          { "matcher": { "id": "byName", "options": "Usage (kWh)" }, "properties": [{ "id": "unit", "value": "kwatth" }, { "id": "decimals", "value": 0 }] },
+          { "matcher": { "id": "byName", "options": "Total Cost" }, "properties": [{ "id": "unit", "value": "currencyUSD" }, { "id": "decimals", "value": 2 }] },
+          { "matcher": { "id": "byName", "options": "Rate (c/kWh)" }, "properties": [{ "id": "unit", "value": "cent" }, { "id": "decimals", "value": 2 }, { "id": "custom.cellOptions", "value": { "type": "color-background" } }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 12 }, { "color": "orange", "value": 15 }, { "color": "red", "value": 18 }] } }] },
+          { "matcher": { "id": "byName", "options": "Estimated" }, "properties": [{ "id": "mappings", "value": [{ "options": { "false": { "color": "green", "index": 0, "text": "" }, "true": { "color": "yellow", "index": 1, "text": "Est" } }, "type": "value" }] }] }
+        ]
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 31 },
+      "id": 40,
+      "options": {
+        "cellHeight": "sm",
+        "footer": { "countRows": false, "fields": "", "reducer": ["sum"], "show": false },
+        "showHeader": true,
+        "sortBy": [{ "desc": true, "displayName": "Month" }]
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "import \"date\"\n\nfrom(bucket: \"twc_dashboard\")\n  |> range(start: -365d)\n  |> filter(fn: (r) => r._measurement == \"comed_bill\")\n  |> pivot(rowKey: [\"_time\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> map(fn: (r) => ({\n      Month: date.monthDay(t: r._time) + \" \" + string(v: date.year(t: r._time)),\n      \"Usage (kWh)\": r.total_kwh,\n      \"Total Cost\": r.total_cost_dollars,\n      \"Rate (c/kWh)\": r.effective_rate_cents,\n      Estimated: r.estimated\n    }))\n  |> keep(columns: [\"Month\", \"Usage (kWh)\", \"Total Cost\", \"Rate (c/kWh)\", \"Estimated\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Monthly Bills",
+      "type": "table"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "description": "Monthly bill totals over time",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "currencyUSD"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 31 },
+      "id": 41,
+      "options": {
+        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: -365d)\n  |> filter(fn: (r) => r._measurement == \"comed_bill\")\n  |> filter(fn: (r) => r._field == \"total_cost_dollars\")\n  |> rename(columns: {_value: \"Bill Amount\"})\n  |> keep(columns: [\"_time\", \"Bill Amount\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Bill Trend",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "description": "Rolling 12-month average bill amount",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 2,
+          "mappings": [],
+          "noValue": "No data",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "currencyUSD"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 39 },
+      "id": 42,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["mean"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: -365d)\n  |> filter(fn: (r) => r._measurement == \"comed_bill\")\n  |> filter(fn: (r) => r._field == \"total_cost_dollars\")\n  |> mean()\n  |> keep(columns: [\"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Avg Monthly Bill",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "description": "Rolling 12-month average usage",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 0,
+          "mappings": [],
+          "noValue": "No data",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] },
+          "unit": "kwatth"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 39 },
+      "id": 43,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["mean"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: -365d)\n  |> filter(fn: (r) => r._measurement == \"comed_bill\")\n  |> filter(fn: (r) => r._field == \"total_kwh\")\n  |> mean()\n  |> keep(columns: [\"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Avg Monthly Usage",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "description": "Highest monthly bill in the last 12 months",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 2,
+          "mappings": [],
+          "noValue": "No data",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "orange", "value": null }] },
+          "unit": "currencyUSD"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 39 },
+      "id": 44,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["max"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: -365d)\n  |> filter(fn: (r) => r._measurement == \"comed_bill\")\n  |> filter(fn: (r) => r._field == \"total_cost_dollars\")\n  |> max()\n  |> keep(columns: [\"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Highest Bill",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "description": "Lowest monthly bill in the last 12 months",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 2,
+          "mappings": [],
+          "noValue": "No data",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "currencyUSD"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 39 },
+      "id": 45,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["min"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: -365d)\n  |> filter(fn: (r) => r._measurement == \"comed_bill\")\n  |> filter(fn: (r) => r._field == \"total_cost_dollars\")\n  |> min()\n  |> keep(columns: [\"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Lowest Bill",
+      "type": "stat"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 43 },
+      "id": 105,
+      "panels": [],
+      "title": "Rate Analysis",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "description": "Daily effective rate (total cost / total kWh) over time",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "axisSoftMin": 0,
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 20,
+            "gradientMode": "scheme",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "insertNulls": false,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "area" }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 12 },
+              { "color": "orange", "value": 15 },
+              { "color": "red", "value": 18 }
+            ]
+          },
+          "unit": "cent"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 16, "x": 0, "y": 44 },
+      "id": 50,
+      "options": {
+        "legend": { "calcs": ["mean", "min", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"comed_meter_cost\")\n  |> filter(fn: (r) => r._field == \"effective_rate_cents\")\n  |> filter(fn: (r) => r.resolution == \"DAY\")\n  |> rename(columns: {_value: \"Effective Rate\"})\n  |> keep(columns: [\"_time\", \"Effective Rate\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Effective Rate History",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "description": "Top 5 cheapest days by effective rate",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "custom": { "align": "auto", "cellOptions": { "type": "auto" }, "inspect": false },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Date" }, "properties": [{ "id": "custom.width", "value": 120 }] },
+          { "matcher": { "id": "byName", "options": "Rate (c/kWh)" }, "properties": [{ "id": "unit", "value": "cent" }, { "id": "decimals", "value": 2 }, { "id": "custom.cellOptions", "value": { "type": "color-background" } }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 12 }, { "color": "red", "value": 15 }] } }] },
+          { "matcher": { "id": "byName", "options": "Usage (kWh)" }, "properties": [{ "id": "unit", "value": "kwatth" }, { "id": "decimals", "value": 1 }] }
+        ]
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 44 },
+      "id": 51,
+      "options": {
+        "cellHeight": "sm",
+        "footer": { "countRows": false, "fields": "", "reducer": ["sum"], "show": false },
+        "showHeader": true,
+        "sortBy": [{ "desc": false, "displayName": "Rate (c/kWh)" }]
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "import \"date\"\n\nfrom(bucket: \"twc_dashboard\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"comed_meter_cost\")\n  |> filter(fn: (r) => r.resolution == \"DAY\")\n  |> pivot(rowKey: [\"_time\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> filter(fn: (r) => r.effective_rate_cents > 0.0)\n  |> sort(columns: [\"effective_rate_cents\"])\n  |> limit(n: 5)\n  |> map(fn: (r) => ({\n      Date: string(v: date.month(t: r._time)) + \"/\" + string(v: date.monthDay(t: r._time)),\n      \"Rate (c/kWh)\": r.effective_rate_cents,\n      \"Usage (kWh)\": r.kwh\n    }))\n  |> keep(columns: [\"Date\", \"Rate (c/kWh)\", \"Usage (kWh)\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Best Days (Lowest Rate)",
+      "type": "table"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "description": "Top 5 most expensive days by effective rate",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "custom": { "align": "auto", "cellOptions": { "type": "auto" }, "inspect": false },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }] }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Date" }, "properties": [{ "id": "custom.width", "value": 120 }] },
+          { "matcher": { "id": "byName", "options": "Rate (c/kWh)" }, "properties": [{ "id": "unit", "value": "cent" }, { "id": "decimals", "value": 2 }, { "id": "custom.cellOptions", "value": { "type": "color-background" } }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 12 }, { "color": "red", "value": 15 }] } }] },
+          { "matcher": { "id": "byName", "options": "Usage (kWh)" }, "properties": [{ "id": "unit", "value": "kwatth" }, { "id": "decimals", "value": 1 }] }
+        ]
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 52 },
+      "id": 52,
+      "options": {
+        "cellHeight": "sm",
+        "footer": { "countRows": false, "fields": "", "reducer": ["sum"], "show": false },
+        "showHeader": true,
+        "sortBy": [{ "desc": true, "displayName": "Rate (c/kWh)" }]
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "import \"date\"\n\nfrom(bucket: \"twc_dashboard\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"comed_meter_cost\")\n  |> filter(fn: (r) => r.resolution == \"DAY\")\n  |> pivot(rowKey: [\"_time\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> filter(fn: (r) => r.effective_rate_cents > 0.0)\n  |> sort(columns: [\"effective_rate_cents\"], desc: true)\n  |> limit(n: 5)\n  |> map(fn: (r) => ({\n      Date: string(v: date.month(t: r._time)) + \"/\" + string(v: date.monthDay(t: r._time)),\n      \"Rate (c/kWh)\": r.effective_rate_cents,\n      \"Usage (kWh)\": r.kwh\n    }))\n  |> keep(columns: [\"Date\", \"Rate (c/kWh)\", \"Usage (kWh)\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Worst Days (Highest Rate)",
+      "type": "table"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "${datasource}" },
+      "description": "Distribution of daily effective rates over time",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "custom": {
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineWidth": 1
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 12 },
+              { "color": "orange", "value": 15 },
+              { "color": "red", "value": 18 }
+            ]
+          },
+          "unit": "cent"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 16, "x": 8, "y": 52 },
+      "id": 53,
+      "options": {
+        "bucketCount": 20,
+        "bucketSize": 1,
+        "combine": false,
+        "legend": { "calcs": [], "displayMode": "hidden", "placement": "bottom", "showLegend": false }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "${datasource}" },
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"comed_meter_cost\")\n  |> filter(fn: (r) => r._field == \"effective_rate_cents\")\n  |> filter(fn: (r) => r.resolution == \"DAY\")\n  |> filter(fn: (r) => r._value > 0.0)\n  |> keep(columns: [\"_time\", \"_value\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Rate Distribution",
+      "type": "histogram"
+    }
+  ],
+  "refresh": "1h",
+  "schemaVersion": 38,
+  "tags": ["tesla", "ev", "charging", "costs", "opower", "comed"],
+  "templating": {
+    "list": [
+      {
+        "current": { "selected": false, "text": "InfluxDB", "value": "InfluxDB" },
+        "hide": 0,
+        "includeAll": false,
+        "multi": false,
+        "name": "datasource",
+        "options": [],
+        "query": "influxdb",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      }
+    ]
+  },
+  "time": { "from": "now-30d", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Meter & Bills",
+  "uid": "twc-meter-bills",
+  "version": 1,
+  "weekStart": ""
+}

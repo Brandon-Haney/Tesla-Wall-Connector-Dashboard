@@ -5,12 +5,13 @@
 ### What's Working
 - Real-time data collection from Tesla Wall Connector Gen 3
 - ComEd hourly pricing integration
-- **Six Grafana dashboards**:
+- **Seven Grafana dashboards**:
   - Charging Overview (home dashboard, Fleet API)
   - Fleet Wall Connectors (real-time status of all units)
   - Session History (Fleet API with daily/weekly/monthly summaries)
   - Energy & Costs (Fleet API)
   - Vehicle Status (Tessie API)
+  - Meter & Bills (Opower - actual meter usage and bill data)
   - Live Overview (Legacy - local TWC API only)
 - Docker-based deployment with InfluxDB, Grafana, and Python collector
 - Multi-charger support
@@ -981,10 +982,10 @@ from(bucket: "twc_dashboard")
 ```
 
 **Implementation Tasks:**
-- [ ] Create `grafana/dashboards/meter-bills.json`
-- [ ] Add dashboard to provisioning
+- [x] Create `grafana/dashboards/meter-bills.json`
+- [x] Add dashboard to provisioning (auto-provisioned via existing path)
 - [ ] Test all panels with real Opower data
-- [ ] Add to dashboard navigation
+- [x] Add to dashboard navigation (appears in Tesla Wall Connector folder)
 
 ##### Step 4.6.5: First-Time Setup Flow - COMPLETE ✅
 - [x] Document MFA setup process in `docs/COMED_OPOWER_SETUP.md`
