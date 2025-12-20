@@ -52,11 +52,13 @@ No restart needed - the collector watches for the cache file.
 
 ### Token Keep-Alive
 
-When you complete the setup script with MFA, the collector caches your **session cookies** (not just the token). These cookies allow the collector to automatically request new tokens every 10 minutes, keeping your session alive indefinitely.
+When you complete the setup script with MFA, the collector caches your **session cookies** (not just the token). These cookies allow the collector to automatically request new tokens, keeping your session alive indefinitely.
 
 The collector:
-- **Refreshes tokens every 10 minutes** to prevent expiry
+- **Checks every 10 minutes** and refreshes when token has < 15 minutes left
+- **Logs "Session alive"** hourly so you know it's working
 - **Auto-detects the cache file** - no restart needed after running setup
+- **Saves refreshed tokens** directly to the cache file on the host
 - **Logs clear warnings** if the session is about to expire
 - **Logs clear errors** with fix instructions if authentication fails
 
@@ -93,13 +95,19 @@ If the session fully expires:
 
 ```
 ============================================================
-OPOWER: SESSION EXPIRED!
-Meter data collection is now STOPPED.
-To restore, run locally:
-  python scripts/comed_opower_setup.py --force
-Then restart: docker-compose restart collector
+OPOWER: TOKEN EXPIRED!
+  Token expired: 2025-12-20 18:30:30 UTC (2.8 hours ago)
+  Meter data collection is STOPPED until re-authenticated.
+
+  To restore, run locally:
+    python scripts/comed_opower_setup.py
+
+  Then copy .comed_opower_cache.json to your server.
+  The collector will auto-detect within 30 seconds.
 ============================================================
 ```
+
+Note: No restart needed - the collector auto-detects the new cache file.
 
 ## Authentication Methods
 
@@ -142,9 +150,12 @@ This method runs an interactive script that prompts for your credentials and MFA
 
 5. **Done!** The collector auto-detects the cache file within 30 seconds.
 
-**Why run locally instead of Docker?**
+**Running options:**
 
-The setup script requires interactive input (credentials + MFA code). Running locally is simpler than Docker's interactive mode. The cache file is saved to the project root which Docker mounts as `/app/project/`, so the collector picks it up automatically.
+- **On your local computer**: Run the script, then copy `.comed_opower_cache.json` to your server
+- **Directly on the server**: If Python 3 and httpx are available on your server (e.g., Unraid with Python installed), run directly - no copying needed!
+
+The cache file is saved to the project root which Docker mounts, so the collector picks it up automatically.
 
 ### Option 2: Bearer Token (Manual)
 
