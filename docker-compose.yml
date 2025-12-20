@@ -103,10 +103,9 @@ services:
       # Mount secrets file (contains Tessie API token, etc.)
       # Create .secrets from .secrets.example and add your tokens
       - ./.secrets:/app/.secrets:ro
-      # Mount project root so collector can access cache file
-      # The Opower cache file (.comed_opower_cache.json) is created by running
-      # scripts/comed_opower_setup.py locally, then copied to this directory
-      - ./:/app/project:ro
+      # Mount project root so collector can read/write cache file
+      # The Opower cache file (.comed_opower_cache.json) is updated during token refresh
+      - ./:/app/project
     depends_on:
       influxdb:
         condition: service_healthy
