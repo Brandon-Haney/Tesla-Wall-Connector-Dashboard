@@ -538,13 +538,8 @@
       "targets": [
         {
           "datasource": { "type": "influxdb", "uid": "${datasource}" },
-          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"fleet_charge_session\")\n  |> filter(fn: (r) => r._field == \"full_cost_dollars\")\n  |> group()\n  |> sum()\n  |> rename(columns: {_value: \"Calculated (EV)\"})\n  |> keep(columns: [\"Calculated (EV)\"])",
+          "query": "import \"array\"\n\nev = from(bucket: \"twc_dashboard\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"fleet_charge_session\")\n  |> filter(fn: (r) => r._field == \"full_cost_dollars\")\n  |> group()\n  |> sum()\n  |> findRecord(fn: (key) => true, idx: 0)\n\nactual = from(bucket: \"twc_dashboard\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"comed_meter_cost\")\n  |> filter(fn: (r) => r._field == \"cost_dollars\")\n  |> filter(fn: (r) => r.resolution == \"DAY\")\n  |> group()\n  |> sum()\n  |> findRecord(fn: (key) => true, idx: 0)\n\narray.from(rows: [\n  {_field: \"Calculated (EV)\", _value: ev._value},\n  {_field: \"Actual (Total)\", _value: actual._value}\n])",
           "refId": "A"
-        },
-        {
-          "datasource": { "type": "influxdb", "uid": "${datasource}" },
-          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"comed_meter_cost\")\n  |> filter(fn: (r) => r._field == \"cost_dollars\")\n  |> filter(fn: (r) => r.resolution == \"DAY\")\n  |> group()\n  |> sum()\n  |> rename(columns: {_value: \"Actual (Total)\"})\n  |> keep(columns: [\"Actual (Total)\"])",
-          "refId": "B"
         }
       ],
       "title": "30-Day Cost Comparison",
@@ -715,7 +710,7 @@
       "targets": [
         {
           "datasource": { "type": "influxdb", "uid": "${datasource}" },
-          "query": "import \"date\"\n\nfrom(bucket: \"twc_dashboard\")\n  |> range(start: -365d)\n  |> filter(fn: (r) => r._measurement == \"comed_bill\")\n  |> pivot(rowKey: [\"_time\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> map(fn: (r) => ({\n      Month: date.monthDay(t: r._time) + \" \" + string(v: date.year(t: r._time)),\n      \"Usage (kWh)\": r.total_kwh,\n      \"Total Cost\": r.total_cost_dollars,\n      \"Rate (c/kWh)\": r.effective_rate_cents,\n      Estimated: r.estimated\n    }))\n  |> keep(columns: [\"Month\", \"Usage (kWh)\", \"Total Cost\", \"Rate (c/kWh)\", \"Estimated\"])",
+          "query": "import \"date\"\nimport \"strings\"\n\nmonthNames = [\"Jan\", \"Feb\", \"Mar\", \"Apr\", \"May\", \"Jun\", \"Jul\", \"Aug\", \"Sep\", \"Oct\", \"Nov\", \"Dec\"]\n\nfrom(bucket: \"twc_dashboard\")\n  |> range(start: -365d)\n  |> filter(fn: (r) => r._measurement == \"comed_bill\")\n  |> pivot(rowKey: [\"_time\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> map(fn: (r) => ({\n      _time: r._time,\n      Month: monthNames[date.month(t: r._time) - 1] + \" \" + string(v: date.year(t: r._time)),\n      \"Usage (kWh)\": r.total_kwh,\n      \"Total Cost\": r.total_cost_dollars,\n      \"Rate (c/kWh)\": r.effective_rate_cents,\n      Estimated: r.estimated\n    }))\n  |> sort(columns: [\"_time\"], desc: true)\n  |> keep(columns: [\"Month\", \"Usage (kWh)\", \"Total Cost\", \"Rate (c/kWh)\", \"Estimated\"])",
           "refId": "A"
         }
       ],
@@ -767,6 +762,7 @@
           "refId": "A"
         }
       ],
+      "timeFrom": "365d",
       "title": "Bill Trend",
       "type": "timeseries"
     },
