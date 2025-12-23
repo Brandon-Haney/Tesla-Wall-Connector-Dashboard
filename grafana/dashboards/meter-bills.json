@@ -27,15 +27,18 @@
     },
     {
       "datasource": { "type": "influxdb", "uid": "${datasource}" },
-      "description": "Shows Connected if Opower data was received in the last 48 hours",
+      "description": "Real-time Opower API session status: Connected (authenticated), Expiring (token expiring soon), or Expired (needs re-authentication)",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
           "mappings": [
-            { "options": { "1": { "color": "green", "index": 0, "text": "Connected" } }, "type": "value" },
-            { "options": { "0": { "color": "red", "index": 1, "text": "Expired" } }, "type": "value" }
+            { "options": { "2": { "color": "green", "index": 0, "text": "Connected" } }, "type": "value" },
+            { "options": { "1": { "color": "yellow", "index": 1, "text": "Expiring" } }, "type": "value" },
+            { "options": { "0": { "color": "red", "index": 2, "text": "Expired" } }, "type": "value" },
+            { "options": { "-1": { "color": "gray", "index": 3, "text": "Disabled" } }, "type": "value" }
           ],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+          "noValue": "No Data",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "yellow", "value": 1 }, { "color": "green", "value": 2 }] }
         },
         "overrides": []
       },
@@ -52,7 +55,7 @@
       "targets": [
         {
           "datasource": { "type": "influxdb", "uid": "${datasource}" },
-          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: -48h)\n  |> filter(fn: (r) => r._measurement == \"comed_meter_usage\")\n  |> filter(fn: (r) => r._field == \"kwh\")\n  |> count()\n  |> map(fn: (r) => ({r with _value: if r._value > 0 then 1 else 0}))\n  |> keep(columns: [\"_value\"])",
+          "query": "from(bucket: \"twc_dashboard\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"opower_session_status\")\n  |> filter(fn: (r) => r._field == \"status\")\n  |> last()\n  |> keep(columns: [\"_value\"])",
           "refId": "A"
         }
       ],

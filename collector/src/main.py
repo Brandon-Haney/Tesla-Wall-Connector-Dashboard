@@ -2146,6 +2146,13 @@ class Collector:
             logger.info("  Opower bootstrap complete")
             logger.info("-" * 60)
 
+            # Write session status to InfluxDB for dashboard
+            self.influx_writer.write_opower_session_status(
+                authenticated=True,
+                token_expiry=self.opower_client.token_expiry,
+                enabled=True
+            )
+
         except OpowerAuthError as e:
             logger.error("=" * 60)
             logger.error(f"OPOWER: AUTHENTICATION FAILED - {e}")
@@ -2154,6 +2161,11 @@ class Collector:
             logger.error("  2. Restart collector: docker-compose restart collector")
             logger.error("=" * 60)
             self.opower_authenticated = False
+            self.influx_writer.write_opower_session_status(
+                authenticated=False,
+                token_expiry=None,
+                enabled=True
+            )
 
         except Exception as e:
             logger.error(f"Error during Opower bootstrap: {e}")
@@ -2179,6 +2191,11 @@ class Collector:
                 logger.error("Then restart: docker-compose restart collector")
                 logger.error("=" * 60)
                 self.opower_authenticated = False
+                self.influx_writer.write_opower_session_status(
+                    authenticated=False,
+                    token_expiry=None,
+                    enabled=True
+                )
                 return
 
             now = datetime.now(timezone.utc)
@@ -2243,6 +2260,12 @@ class Collector:
             if await self.opower_client.refresh_token():
                 logger.info("Opower: Token refreshed successfully - session alive")
                 self.opower_expiry_warned = False
+                # Update session status in InfluxDB
+                self.influx_writer.write_opower_session_status(
+                    authenticated=True,
+                    token_expiry=self.opower_client.token_expiry,
+                    enabled=True
+                )
             else:
                 # Refresh failed - this is serious, warn loudly
                 logger.error("=" * 60)
@@ -2251,6 +2274,12 @@ class Collector:
                 logger.error("  1. Run locally: python scripts/comed_opower_setup.py --force")
                 logger.error("  2. Restart collector: docker-compose restart collector")
                 logger.error("=" * 60)
+                # Write expiring status
+                self.influx_writer.write_opower_session_status(
+                    authenticated=True,
+                    token_expiry=self.opower_client.token_expiry,
+                    enabled=True
+                )
 
         except Exception as e:
             logger.error(f"Opower: Token refresh error: {e}")

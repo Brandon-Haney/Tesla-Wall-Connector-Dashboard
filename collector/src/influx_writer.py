@@ -1511,6 +1511,55 @@ class InfluxWriter:
         for bill in bills:
             self.write_opower_bill(bill)
 
+    def write_opower_session_status(
+        self,
+        authenticated: bool,
+        token_expiry: Optional[datetime] = None,
+        enabled: bool = True
+    ):
+        """Write Opower session/authentication status to InfluxDB.
+
+        This is used by the Meter & Bills dashboard to show real-time
+        connection status to the Opower API.
+
+        Args:
+            authenticated: Whether we have a valid authenticated session
+            token_expiry: When the current token expires (if authenticated)
+            enabled: Whether Opower integration is enabled
+        """
+        try:
+            now = self._now()
+
+            # Calculate seconds until token expires (negative if expired)
+            token_expires_in_s = 0
+            if token_expiry:
+                token_expires_in_s = (token_expiry - now).total_seconds()
+
+            # Determine status: 2=connected, 1=expiring soon, 0=expired/error, -1=disabled
+            if not enabled:
+                status = -1
+            elif not authenticated:
+                status = 0
+            elif token_expires_in_s < 300:  # Less than 5 minutes
+                status = 1  # Expiring soon
+            else:
+                status = 2  # Connected
+
+            point = (
+                Point("opower_session_status")
+                .field("authenticated", 1 if authenticated else 0)
+                .field("enabled", 1 if enabled else 0)
+                .field("status", status)
+                .field("token_expires_in_s", int(token_expires_in_s))
+                .time(now, WritePrecision.MS)
+            )
+
+            self.write_api.write(bucket=self.bucket, org=self.org, record=point)
+            logger.debug(f"Wrote Opower session status: authenticated={authenticated}, status={status}")
+
+        except Exception as e:
+            logger.error(f"Error writing Opower session status: {e}")
+
     def get_latest_opower_usage_time(self, resolution: str = "DAY") -> Optional[datetime]:
         """Get the timestamp of the most recent Opower usage data.
 
