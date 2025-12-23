@@ -1054,14 +1054,7 @@ class Collector:
                     username="",
                     password="",
                 )
-                logger.info("=" * 60)
-                logger.info("OPOWER: Enabled but not authenticated")
-                logger.info("  Watching for cache file: .comed_opower_cache.json")
-                logger.info("  To authenticate, run locally:")
-                logger.info("    pip install httpx python-dotenv")
-                logger.info("    python scripts/comed_opower_setup.py")
-                logger.info("  The collector will auto-detect the cache file within 30 seconds.")
-                logger.info("=" * 60)
+                logger.info("OPOWER: Enabled - will check for cached session during bootstrap")
 
         logger.info("-" * 60)
         logger.info(f"Local TWC API: {'ENABLED' if settings.local_twc_enabled else 'DISABLED (using Fleet API only)'}")
@@ -2077,13 +2070,17 @@ class Collector:
                 # Try to load cached session
                 if self.opower_client._load_cache():
                     self.opower_authenticated = True
-                    logger.info("  Loaded cached authentication session")
+                    logger.info("  Loaded cached session successfully")
                 else:
-                    logger.warning(
-                        "  No cached session found. Run setup locally to complete MFA authentication:"
-                    )
+                    logger.info("=" * 60)
+                    logger.info("OPOWER: No cached session found")
+                    logger.info("  To authenticate, run locally:")
+                    logger.info("    pip install httpx")
                     logger.info("    python scripts/comed_opower_setup.py")
-                    logger.info("  Then restart the collector. See docs/COMED_OPOWER_SETUP.md for details.")
+                    logger.info("  Then copy .comed_opower_cache.json to your server.")
+                    logger.info("  The collector will auto-detect within 30 seconds.")
+                    logger.info("  See docs/COMED_OPOWER_SETUP.md for details.")
+                    logger.info("=" * 60)
                     logger.info("-" * 60)
                     return
 
