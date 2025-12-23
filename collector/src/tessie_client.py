@@ -498,8 +498,11 @@ class TessieClient:
             return []
 
         # Extract sessions from response
+        # Handle {"response": null} case from API
         response = data.get("response", data)
-        charge_history = response.get("charge_history", [])
+        if response is None:
+            return []
+        charge_history = response.get("charge_history") or []
 
         sessions = []
         for session_data in charge_history:

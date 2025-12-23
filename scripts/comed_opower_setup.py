@@ -542,7 +542,10 @@ async def run_authentication(username: str, password: str, mfa_method: str = "em
             return True
 
         except Exception as e:
-            print_error(str(e))
+            import traceback
+            print_error(str(e) if str(e) else "Unknown error")
+            print("\nFull error details:")
+            traceback.print_exc()
             return False
 
 
