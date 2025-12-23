@@ -937,6 +937,7 @@ class Collector:
         self.last_opower_cache_check: Optional[datetime] = None
         self.opower_authenticated: bool = False
         self.opower_expiry_warned: bool = False  # Track if we've warned about expiry
+        self.opower_refresh_failures: int = 0  # Consecutive refresh failures
 
         # Recent completed sessions for correlation (TWC and vehicle)
         # Dict: charger_name -> {end_time, energy_kwh, ...}
@@ -2257,6 +2258,7 @@ class Collector:
             if await self.opower_client.refresh_token():
                 logger.info("Opower: Token refreshed successfully - session alive")
                 self.opower_expiry_warned = False
+                self.opower_refresh_failures = 0  # Reset failure counter
                 # Update session status in InfluxDB
                 self.influx_writer.write_opower_session_status(
                     authenticated=True,
@@ -2264,19 +2266,37 @@ class Collector:
                     enabled=True
                 )
             else:
-                # Refresh failed - this is serious, warn loudly
-                logger.error("=" * 60)
-                logger.error("OPOWER: TOKEN REFRESH FAILED!")
-                logger.error("Session will expire soon. To fix:")
-                logger.error("  1. Run locally: python scripts/comed_opower_setup.py --force")
-                logger.error("  2. Restart collector: docker-compose restart collector")
-                logger.error("=" * 60)
-                # Write expiring status
-                self.influx_writer.write_opower_session_status(
-                    authenticated=True,
-                    token_expiry=self.opower_client.token_expiry,
-                    enabled=True
-                )
+                # Refresh failed - track consecutive failures
+                self.opower_refresh_failures += 1
+
+                if self.opower_refresh_failures >= 3:
+                    # Too many failures - give up and watch for new cache
+                    logger.error("=" * 60)
+                    logger.error("OPOWER: TOKEN REFRESH FAILED 3 TIMES!")
+                    logger.error("  Session is invalid. Switching to cache watch mode.")
+                    logger.error("  To restore, run inside Docker:")
+                    logger.error("    docker compose run --rm -it collector python /app/project/scripts/comed_opower_setup.py --force")
+                    logger.error("  The collector will auto-detect the new cache within 30 seconds.")
+                    logger.error("=" * 60)
+                    self.opower_authenticated = False
+                    self.opower_refresh_failures = 0
+                    self.influx_writer.write_opower_session_status(
+                        authenticated=False,
+                        token_expiry=None,
+                        enabled=True
+                    )
+                else:
+                    # Warn but keep trying
+                    logger.error("=" * 60)
+                    logger.error(f"OPOWER: TOKEN REFRESH FAILED! (attempt {self.opower_refresh_failures}/3)")
+                    logger.error("  Will retry on next refresh cycle.")
+                    logger.error("=" * 60)
+                    # Write expiring status
+                    self.influx_writer.write_opower_session_status(
+                        authenticated=True,
+                        token_expiry=self.opower_client.token_expiry,
+                        enabled=True
+                    )
 
         except Exception as e:
             logger.error(f"Opower: Token refresh error: {e}")
@@ -2298,6 +2318,7 @@ class Collector:
 
                 self.opower_authenticated = True
                 self.opower_expiry_warned = False
+                self.opower_refresh_failures = 0  # Reset failure counter
 
                 # Run the full initialization
                 await self._fetch_opower_initial()
