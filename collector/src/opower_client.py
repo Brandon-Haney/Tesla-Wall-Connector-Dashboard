@@ -396,15 +396,25 @@ class OpowerClient:
 
         try:
             # Keep session alive
-            await self.client.get(f"{COMED_SECURE_BASE}/api/Services/MyAccountService.svc/GetSession")
+            logger.debug("Refresh: Calling GetSession to keep session alive...")
+            session_resp = await self.client.get(f"{COMED_SECURE_BASE}/api/Services/MyAccountService.svc/GetSession")
+            logger.debug(f"Refresh: GetSession returned {session_resp.status_code}")
+
+            if session_resp.status_code != 200:
+                logger.warning(f"Refresh: GetSession failed with status {session_resp.status_code}")
+                # Try to get token anyway - session might still be valid
 
             # Get new token
+            logger.debug("Refresh: Calling GetOpowerToken...")
             await self._step10_get_opower_token()
             self._save_cache()
+            logger.debug("Refresh: Token refreshed and cached successfully")
             return True
 
         except Exception as e:
-            logger.warning(f"Token refresh failed: {e}")
+            import traceback
+            logger.warning(f"Token refresh failed: {type(e).__name__}: {e}")
+            logger.debug(f"Token refresh traceback:\n{traceback.format_exc()}")
             return False
 
     async def ensure_authenticated(self) -> bool:
