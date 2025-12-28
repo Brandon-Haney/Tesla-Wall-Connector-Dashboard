@@ -50,17 +50,22 @@ No restart needed - the collector watches for the cache file.
 
 ## How It Works
 
-### Token Keep-Alive
+### OAuth Token Refresh
 
-When you complete the setup script with MFA, the collector caches your **session cookies** (not just the token). These cookies allow the collector to automatically request new tokens, keeping your session alive indefinitely.
+When you complete the setup script with MFA, the collector receives an **OAuth refresh token** that lasts 30-90 days. This refresh token is used to automatically obtain new access tokens without requiring MFA again.
+
+**Token Types:**
+| Token | Lifetime | Purpose |
+|-------|----------|---------|
+| **Refresh Token** | 30-90 days | Used to get new access tokens (no MFA needed) |
+| **Access Token** | ~20-30 min | Used to call the Opower API |
 
 The collector:
-- **Checks every 10 minutes** and refreshes when token has < 15 minutes left
+- **Refreshes every 10 minutes** using the OAuth refresh token
 - **Logs "Session alive"** hourly so you know it's working
 - **Auto-detects the cache file** - no restart needed after running setup
 - **Saves refreshed tokens** directly to the cache file on the host
-- **Logs clear warnings** if the session is about to expire
-- **Logs clear errors** with fix instructions if authentication fails
+- **Only requires MFA** once every 30-90 days when refresh token expires
 
 ### Hot-Reload Detection
 
@@ -78,33 +83,23 @@ OPOWER: Successfully initialized from cache file!
 ============================================================
 ```
 
-### Session Expiry Warnings
+### Token Refresh Logs
 
-If the token refresh fails, you'll see clear error messages in the logs:
-
+Successful token refresh looks like:
 ```
-============================================================
-OPOWER: TOKEN REFRESH FAILED!
-Session will expire soon. To fix:
-  1. Run locally: python scripts/comed_opower_setup.py --force
-  2. Restart collector: docker-compose restart collector
-============================================================
+OPOWER: Refreshing OAuth tokens...
+OPOWER: Getting new Opower access token...
+OPOWER: Token refresh SUCCESS (expires 09:15:30 UTC / 03:15:30 CST)
 ```
 
-If the session fully expires:
-
+If the OAuth refresh token expires (after 30-90 days), you'll see:
 ```
-============================================================
-OPOWER: TOKEN EXPIRED!
-  Token expired: 2025-12-20 18:30:30 UTC (2.8 hours ago)
-  Meter data collection is STOPPED until re-authenticated.
+OPOWER: Token refresh FAILED: OAuth token request failed: 400
+```
 
-  To restore, run locally:
-    python scripts/comed_opower_setup.py
-
-  Then copy .comed_opower_cache.json to your server.
-  The collector will auto-detect within 30 seconds.
-============================================================
+To restore, run the setup script again with MFA:
+```bash
+python scripts/comed_opower_setup.py --force
 ```
 
 Note: No restart needed - the collector auto-detects the new cache file.
@@ -113,8 +108,8 @@ Note: No restart needed - the collector auto-detects the new cache file.
 
 | Method | Pros | Cons |
 |--------|------|------|
-| **Username/Password** | Auto token refresh, hot-reload | Requires MFA on first run |
-| **Bearer Token** | Simple, no MFA prompt | Expires in ~20 minutes, no auto-refresh |
+| **Setup Script (Recommended)** | OAuth refresh token lasts 30-90 days, auto-refresh | Requires MFA on first run |
+| **Bearer Token (Manual)** | Simple, no MFA prompt | Expires in ~20 minutes, no auto-refresh |
 
 ### Option 1: Interactive Setup (Recommended)
 
@@ -233,11 +228,12 @@ COMED_BEARER_TOKEN=Bearer eyJhbGciOi...
 ### Cache File
 
 The setup script creates `.comed_opower_cache.json` in the project root. This file contains:
-- Bearer token for Opower API calls
-- Session cookies for token refresh
-- Token expiry timestamp
+- **OAuth refresh token** - Long-lived token (30-90 days) for getting new access tokens
+- **Opower access token** - Short-lived token (~20 min) for API calls
+- **Account info** - ComEd account number and Opower UUIDs
+- **Token expiry timestamp**
 
-This file is gitignored and should not be committed.
+This file is gitignored and should not be committed. Treat it as sensitive - the refresh token can be used to access your ComEd data.
 
 ## Troubleshooting
 
@@ -260,14 +256,31 @@ python scripts/comed_opower_setup.py --force
 ```
 The collector will auto-detect the new cache file within 30 seconds.
 
-### "Session expired" after a few days
+<!-- DRAFT: Pending confirmation - 2025-12-23
+### Token refresh fails repeatedly (400 Bad Request)
 
-ComEd sessions typically last 24-72 hours. The collector refreshes tokens every 10 minutes to prevent this, but if the collector was stopped during that time, the session may expire.
+If you're running the setup script on the host machine (e.g., via SSH) but the collector
+runs in Docker, the session cookies may be bound to different network contexts.
 
-To restore:
+**Solution: Run the setup script from inside Docker:**
+
+```bash
+docker compose run --rm -it collector python /app/project/scripts/comed_opower_setup.py --force
+```
+
+This ensures the authentication and token refresh use the same network environment.
+The collector will auto-detect the new cache file within 30 seconds.
+-->
+
+### "OAuth refresh token expired" after 30-90 days
+
+OAuth refresh tokens last 30-90 days. When they expire, you'll need to re-authenticate with MFA:
+
 ```bash
 python scripts/comed_opower_setup.py --force
 ```
+
+The collector will auto-detect the new cache file within 30 seconds.
 
 ### Collector not detecting cache file
 
@@ -309,28 +322,31 @@ python scripts/comed_opower_setup.py --force
 
 The integration uses ComEd's Opower platform, which provides the same data you see in the "View My Usage" section of the ComEd website.
 
-**Authentication flow:**
+**Authentication flow (Mobile OAuth):**
 1. Load ComEd login page (redirects to Azure AD B2C)
-2. Submit credentials
-3. Complete MFA verification
-4. Get Opower bearer token
-5. Cache session cookies for token refresh
+2. Initialize mobile OAuth flow with PKCE code challenge
+3. Submit credentials
+4. Complete MFA verification
+5. Exchange authorization code for OAuth tokens (access + refresh)
+6. Get Opower-scoped access token using refresh token
+7. Cache OAuth tokens for long-term use
 
 **Runtime behavior:**
 1. Collector checks for cache file every 30 seconds (when not authenticated)
 2. When cache is found, initializes Opower and bootstraps historical data
-3. Refreshes token every 10 minutes to keep session alive
-4. Polls for new meter data every hour (configurable)
+3. Refreshes OAuth tokens every 10 minutes (access token expires in ~20 min)
+4. Refresh token is rotated with each use, extending its lifetime
+5. Polls for new meter data every hour (configurable)
 
-**Why not use the opower library?**
+**Technical note:**
 
-The popular [tronikos/opower](https://github.com/tronikos/opower) library uses ComEd's mobile app OAuth flow (`B2C_1A_SignIn_Mobile`), which ComEd has disabled. Our solution uses the web OAuth flow which works.
+This implementation uses the same mobile OAuth flow (`B2C_1A_SignIn_Mobile`) as the [tronikos/opower](https://github.com/tronikos/opower) library. The mobile flow uses proper OAuth refresh tokens that last 30-90 days, unlike the web session flow which expired after ~6 hours.
 
 ## Security Notes
 
 - Credentials are stored in `.secrets` which is gitignored
-- The cache file contains session cookies - treat it as sensitive
-- Bearer tokens expire and cannot be used to change your account
+- The cache file contains OAuth tokens - treat it as sensitive
+- The refresh token lasts 30-90 days and can access your usage data
 - The collector only reads data; it cannot modify your ComEd account
 
 ## InfluxDB Measurements

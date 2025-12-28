@@ -25,13 +25,24 @@ from .models import OpowerUsageRead, OpowerCostRead, OpowerBillSummary, OpowerMe
 
 logger = logging.getLogger("twc-collector.opower")
 
-# Azure AD B2C endpoints
-B2C_BASE = "https://secure1.comed.com/euazurecomed.onmicrosoft.com/B2C_1A_SignIn"
-B2C_POLICY = "B2C_1A_SignIn"
+# Azure AD B2C endpoints (Mobile OAuth flow)
+# The mobile OAuth flow uses refresh tokens that last 30-90 days,
+# unlike the web session flow which expires after ~6 hours.
+B2C_MOBILE_POLICY = "B2C_1A_SignIn_Mobile"
+
+# ComEd Mobile OAuth configuration
+# These values are from the ComEd mobile app (same as tronikos/opower library)
+COMED_CLIENT_ID = "b587ed2d-28a5-462c-8c1f-835f9d73f7c3"
+COMED_MOBILE_ID = "msauth.com.comed.mobile"
+COMED_EU_DOMAIN = "eudapi.comed.com"
+COMED_LOGIN_DOMAIN = "secure.comed.com"
 
 # ComEd endpoints
 COMED_SECURE_BASE = "https://secure.comed.com"
 OPOWER_BASE = "https://cec.opower.com"
+
+# Opower scope for token refresh
+OPOWER_SCOPE = "https://euazurecomed.onmicrosoft.com/opower/opower_connect"
 
 # Default headers
 DEFAULT_HEADERS = {
@@ -50,6 +61,9 @@ class OpowerClient:
     """ComEd Opower API client.
 
     Handles authentication and data fetching from the Opower platform.
+    Uses mobile OAuth flow (B2C_1A_SignIn_Mobile) with refresh tokens that
+    last 30-90 days, instead of web session cookies that expire after ~6 hours.
+
     Authentication state is cached in a JSON file to persist across restarts.
 
     Attributes:
@@ -58,12 +72,6 @@ class OpowerClient:
         mfa_method: MFA method ('email' or 'sms')
         cache_path: Path to token cache file
     """
-
-    # Essential cookies for token refresh (session persistence)
-    ESSENTIAL_COOKIES = {
-        '.AspNet.cookie', '.AspNet.cookieC1', '.AspNet.cookieC2',
-        'ASP.NET_SessionId', 'ARRAffinity', 'ARRAffinitySameSite'
-    }
 
     def __init__(
         self,
@@ -107,9 +115,17 @@ class OpowerClient:
         self.account_uuid: Optional[str] = None
         self.utility_account_uuid: Optional[str] = None
 
-        # B2C authentication state
-        self._csrf_token: Optional[str] = None
-        self._tx: Optional[str] = None
+        # OAuth token storage (mobile OAuth flow)
+        self._refresh_token: Optional[str] = None
+        self._base_url: Optional[str] = None  # Azure AD B2C endpoint (changes after login)
+        self._account: Optional[Dict] = None  # Account info from ComEd API
+
+        # PKCE code verifier/challenge (generated per auth attempt)
+        self._code_verifier: Optional[str] = None
+        self._code_challenge: Optional[str] = None
+
+        # B2C authentication state (for MFA flow)
+        self._settings: Dict = {}  # SETTINGS from B2C page (contains csrf, transId, etc.)
         self._display_email: Optional[str] = None
         self._display_phone: Optional[str] = None
 
@@ -122,6 +138,14 @@ class OpowerClient:
 
         # Track when we last warned about token expiry (to avoid log spam)
         self._last_expiry_warning: Optional[datetime] = None
+
+        # Diagnostic tracking
+        self._cache_loaded_at: Optional[datetime] = None
+        self._last_refresh_attempt: Optional[datetime] = None
+        self._last_refresh_success: Optional[datetime] = None
+        self._refresh_attempt_count: int = 0
+        self._refresh_success_count: int = 0
+        self._refresh_failure_count: int = 0
 
     async def __aenter__(self):
         """Async context manager entry."""
@@ -160,6 +184,19 @@ class OpowerClient:
         """
         self._mfa_callback = callback
 
+    def _generate_pkce(self) -> Tuple[str, str]:
+        """Generate PKCE code verifier and challenge.
+
+        Returns:
+            (code_verifier, code_challenge) tuple
+        """
+        # Generate random verifier (43-128 characters)
+        code_verifier = secrets.token_urlsafe(32)
+        # Create S256 challenge
+        digest = hashlib.sha256(code_verifier.encode("utf-8")).digest()
+        code_challenge = base64.urlsafe_b64encode(digest).decode("utf-8").rstrip("=")
+        return code_verifier, code_challenge
+
     @property
     def is_authenticated(self) -> bool:
         """Check if we have a valid token."""
@@ -174,7 +211,10 @@ class OpowerClient:
         return self._needs_mfa
 
     def _load_cache(self) -> bool:
-        """Load cached token and session cookies.
+        """Load cached OAuth tokens.
+
+        The new cache format uses OAuth refresh_token instead of session cookies.
+        Old cache format (with "cookies" key) is detected and rejected.
 
         Returns:
             True if valid cache was loaded, False otherwise
@@ -199,102 +239,107 @@ class OpowerClient:
         self.cache_path = cache_path
 
         try:
+            # Log cache file age
+            cache_mtime = datetime.fromtimestamp(self.cache_path.stat().st_mtime, tz=timezone.utc)
+            cache_age = datetime.now(timezone.utc) - cache_mtime
+            cache_age_hours = cache_age.total_seconds() / 3600
+            logger.info(f"OPOWER: Cache file age: {cache_age_hours:.1f} hours (modified: {cache_mtime.strftime('%Y-%m-%d %H:%M:%S')} UTC)")
+
             cache = json.loads(self.cache_path.read_text())
-            expiry = datetime.fromisoformat(cache.get("expiry", ""))
 
-            # Check if token is still valid
-            now = datetime.now(timezone.utc)
-            if expiry <= now + timedelta(minutes=2):
-                expired_ago = now - expiry
-                hours_ago = expired_ago.total_seconds() / 3600
-
-                # Only show full warning once per hour to avoid log spam
-                show_full_warning = (
-                    self._last_expiry_warning is None or
-                    (now - self._last_expiry_warning).total_seconds() >= 3600
-                )
-
-                if show_full_warning:
-                    logger.warning("=" * 60)
-                    logger.warning("OPOWER: TOKEN EXPIRED!")
-                    logger.warning(f"  Token expired: {expiry.strftime('%Y-%m-%d %H:%M:%S')} UTC ({hours_ago:.1f} hours ago)")
-                    logger.warning("  Meter data collection is STOPPED until re-authenticated.")
-                    logger.warning("")
-                    logger.warning("  To restore, run locally:")
-                    logger.warning("    python scripts/comed_opower_setup.py")
-                    logger.warning("")
-                    logger.warning("  Then copy .comed_opower_cache.json to your server.")
-                    logger.warning("  The collector will auto-detect within 30 seconds.")
-                    logger.warning("=" * 60)
-                    self._last_expiry_warning = now
-
+            # Detect old cache format (cookie-based, ~6 hour expiry)
+            if "cookies" in cache and "refresh_token" not in cache:
+                logger.warning("=" * 60)
+                logger.warning("OPOWER: OLD CACHE FORMAT DETECTED")
+                logger.warning("  The cache uses the old web session format that expires after ~6 hours.")
+                logger.warning("  The new OAuth format uses refresh tokens that last 30-90 days.")
+                logger.warning("")
+                logger.warning("  To migrate, run locally:")
+                logger.warning("    python scripts/comed_opower_setup.py --force")
+                logger.warning("")
+                logger.warning("  Then copy .comed_opower_cache.json to your server.")
+                logger.warning("=" * 60)
+                # Delete the old cache file to force re-auth
+                self.cache_path.unlink()
+                logger.info("OPOWER: Deleted old cache file to force re-authentication")
                 return False
 
-            # Warn if token expires within 1 hour (only once per check cycle)
-            time_remaining = expiry - now
-            if time_remaining < timedelta(hours=1):
-                # Only warn once about upcoming expiry
-                if self._last_expiry_warning is None or (now - self._last_expiry_warning).total_seconds() >= 900:
-                    minutes_remaining = time_remaining.total_seconds() / 60
-                    logger.warning(f"OPOWER: Token expires in {minutes_remaining:.0f} minutes!")
-                    logger.warning("  Consider refreshing soon: python scripts/comed_opower_setup.py")
-                    self._last_expiry_warning = now
+            # Load OAuth tokens (new format)
+            refresh_token = cache.get("refresh_token")
+            if not refresh_token:
+                logger.warning("OPOWER: Cache missing refresh_token - re-authentication required")
+                return False
 
-            self.opower_token = cache["token"]
-            self.token_expiry = expiry
+            self._refresh_token = refresh_token
+            self._base_url = cache.get("base_url")
+            self._account = cache.get("account")
+            self.opower_token = cache.get("token")
             self.account_uuid = cache.get("account_uuid")
             self.utility_account_uuid = cache.get("utility_account_uuid")
 
-            # Restore session cookies
-            cookies = cache.get("cookies", {})
-            for name, cookie_data in cookies.items():
-                self.client.cookies.set(
-                    name,
-                    cookie_data["value"],
-                    domain=cookie_data.get("domain", ""),
-                    path=cookie_data.get("path", "/"),
-                )
+            # Parse token expiry
+            expiry_str = cache.get("expiry")
+            if expiry_str:
+                self.token_expiry = datetime.fromisoformat(expiry_str)
+            else:
+                self.token_expiry = None
 
-            if cookies:
-                logger.info(f"Restored {len(cookies)} session cookies from cache")
+            # Check if Opower token is still valid (refresh tokens last much longer)
+            now = datetime.now(timezone.utc)
+            if self.token_expiry and self.token_expiry <= now + timedelta(minutes=2):
+                # Opower token expired, but we can refresh it using refresh_token
+                logger.info("OPOWER: Opower token expired, will refresh using OAuth refresh_token")
+                # Don't return False - let the caller refresh the token
+
+            # Track when we loaded the cache
+            self._cache_loaded_at = datetime.now(timezone.utc)
 
             # Reset expiry warning flag on successful load
             self._last_expiry_warning = None
 
-            logger.info(f"OPOWER: Authenticated (token expires {expiry.strftime('%Y-%m-%d %H:%M:%S')} UTC)")
+            # Log status
+            if self.token_expiry:
+                utc_str = self.token_expiry.strftime('%Y-%m-%d %H:%M:%S UTC')
+                local_str = self.token_expiry.astimezone().strftime('%H:%M:%S %Z')
+                logger.info(f"OPOWER: Cache loaded (token expires {utc_str} / {local_str})")
+            else:
+                logger.info("OPOWER: Cache loaded (refresh_token available, will get new token)")
+
             return True
 
         except (json.JSONDecodeError, KeyError, ValueError) as e:
-            logger.warning(f"Failed to load cache: {e}")
+            logger.warning(f"OPOWER: Failed to load cache: {e}")
             return False
 
     def _save_cache(self):
-        """Save token and session cookies to cache file."""
-        # Only save essential cookies
-        cookies = {}
-        for cookie in self.client.cookies.jar:
-            if cookie.name in self.ESSENTIAL_COOKIES and cookie.domain and 'comed.com' in cookie.domain:
-                cookies[cookie.name] = {
-                    "value": cookie.value,
-                    "domain": cookie.domain,
-                    "path": cookie.path,
-                }
+        """Save OAuth tokens to cache file.
 
+        The new format stores OAuth refresh_token instead of session cookies.
+        This allows tokens to be refreshed for 30-90 days without re-authentication.
+        """
         cache = {
+            # OAuth tokens (new format)
+            "refresh_token": self._refresh_token,
+            "base_url": self._base_url,
+            "account": self._account,
+            # Opower token (short-lived, ~20 min)
             "token": self.opower_token,
             "expiry": self.token_expiry.isoformat() if self.token_expiry else None,
+            # Account info
             "account_uuid": self.account_uuid,
             "utility_account_uuid": self.utility_account_uuid,
-            "cookies": cookies,
         }
 
         # Ensure parent directory exists
         self.cache_path.parent.mkdir(parents=True, exist_ok=True)
         self.cache_path.write_text(json.dumps(cache, indent=2))
-        logger.debug(f"Token cached to {self.cache_path}")
+        logger.debug(f"OPOWER: OAuth tokens cached to {self.cache_path}")
 
     async def authenticate(self, force_mfa: bool = False) -> bool:
-        """Authenticate with ComEd and get Opower token.
+        """Authenticate with ComEd using mobile OAuth flow.
+
+        Uses the mobile OAuth flow (B2C_1A_SignIn_Mobile) which provides
+        refresh tokens that last 30-90 days instead of ~6 hour sessions.
 
         Args:
             force_mfa: Force new authentication with MFA even if cache is valid
@@ -309,22 +354,30 @@ class OpowerClient:
 
         # Try to use cached token first
         if not force_mfa and self._load_cache():
-            return True
+            # If we have a refresh token but expired Opower token, refresh it
+            if self._refresh_token and (not self.opower_token or not self.is_authenticated):
+                logger.info("OPOWER: Refreshing expired token from cache...")
+                if await self.refresh_token():
+                    return True
+            elif self.is_authenticated:
+                return True
 
-        # Need to authenticate - start B2C flow
-        logger.info("Starting ComEd authentication...")
+        # Need to authenticate - start mobile OAuth flow
+        logger.info("Starting ComEd mobile OAuth authentication...")
         self._needs_mfa = True
 
         try:
-            # Step 1-3: Load login page and submit credentials
-            await self._step1_load_login_page()
-            await self._step2_submit_credentials()
-            await self._step3_confirm_credentials()
+            # Step 1: Load login page and initialize mobile OAuth with PKCE
+            await self._step1_load_login_and_mobile_oauth()
 
-            # Step 4-6: MFA selection and send code
-            await self._step4_select_mfa_method()
-            await self._step5_confirm_mfa_selection()
-            await self._step6_send_mfa_code()
+            # Step 2: Submit credentials
+            await self._step2_submit_credentials()
+
+            # Step 3: Confirm and get MFA options
+            await self._step3_confirm_and_get_mfa_options()
+
+            # Step 4: Select MFA method and send code
+            await self._step4_select_mfa_and_send_code()
 
             # Mark that we're waiting for MFA
             self._mfa_pending = True
@@ -345,7 +398,7 @@ class OpowerClient:
             raise OpowerAuthError(f"Authentication failed: {e}")
 
     async def complete_mfa(self, mfa_code: str) -> bool:
-        """Complete MFA verification and get token.
+        """Complete MFA verification and get OAuth tokens.
 
         Args:
             mfa_code: The MFA code received via email/SMS
@@ -360,23 +413,30 @@ class OpowerClient:
             raise OpowerAuthError("No MFA authentication in progress")
 
         try:
-            # Step 7-9: Verify MFA and complete login
-            await self._step7_verify_mfa_code(mfa_code)
-            await self._step8_final_mfa_submission(mfa_code)
-            await self._step9_complete_login()
+            # Step 5: Verify MFA code
+            await self._step5_verify_mfa_code(mfa_code)
 
-            # Step 10: Get Opower token
-            await self._step10_get_opower_token()
+            # Step 6: Get authorization code from redirect
+            auth_code = await self._step6_get_authorization_code()
 
-            # Get account info
+            # Step 7: Exchange code for OAuth tokens (including refresh_token)
+            await self._step7_exchange_code_for_tokens(auth_code)
+
+            # Step 8: Get account information
+            await self._step8_get_account_info()
+
+            # Step 9: Get Opower access token
+            await self._step9_get_opower_token()
+
+            # Get customer info (account_uuid, utility_account_uuid)
             await self._get_customer_info()
 
-            # Save to cache
+            # Save OAuth tokens to cache
             self._save_cache()
 
             self._needs_mfa = False
             self._mfa_pending = False
-            logger.info("Authentication complete")
+            logger.info("Authentication complete (OAuth tokens saved)")
             return True
 
         except Exception as e:
@@ -384,10 +444,109 @@ class OpowerClient:
             logger.error(f"MFA verification failed: {e}")
             raise OpowerAuthError(f"MFA verification failed: {e}")
 
-    async def refresh_token(self) -> bool:
-        """Refresh the Opower token using existing session cookies.
+    async def _post_oauth_token(self, data: Dict) -> Dict:
+        """POST to the OAuth token endpoint.
 
-        This doesn't require MFA if session cookies are still valid.
+        Args:
+            data: Form data for the token request
+
+        Returns:
+            JSON response from the token endpoint
+
+        Raises:
+            OpowerAuthError: If the request fails
+        """
+        if not self._base_url:
+            raise OpowerAuthError("No OAuth base URL - authentication required")
+
+        url = f"https://{self._base_url}/oauth2/v2.0/token"
+
+        try:
+            resp = await self.client.post(
+                url,
+                data=data,
+                headers={"User-Agent": DEFAULT_HEADERS["User-Agent"]},
+                timeout=30.0
+            )
+
+            if resp.status_code != 200:
+                logger.error(f"OAuth token request failed: {resp.status_code}")
+                logger.error(f"Response: {resp.text[:500] if resp.text else 'empty'}")
+                raise OpowerAuthError(f"OAuth token request failed: {resp.status_code}")
+
+            return resp.json()
+
+        except httpx.RequestError as e:
+            raise OpowerAuthError(f"OAuth token request error: {e}")
+
+    async def _refresh_oauth_token(self) -> str:
+        """Refresh the OAuth refresh token.
+
+        This exchanges the current refresh_token for a new access_token
+        and a new refresh_token (refresh tokens are rotated).
+
+        Returns:
+            The new access_token
+        """
+        logger.debug("Refreshing OAuth refresh_token...")
+
+        result = await self._post_oauth_token({
+            "grant_type": "refresh_token",
+            "response_type": "token",
+            "scope": f"openid offline_access {COMED_CLIENT_ID}",
+            "client_id": COMED_CLIENT_ID,
+            "refresh_token": self._refresh_token,
+        })
+
+        # Update the refresh token (it rotates with each use)
+        new_refresh_token = result.get("refresh_token", "")
+        if new_refresh_token:
+            self._refresh_token = new_refresh_token
+            logger.debug("OAuth refresh_token rotated")
+
+        access_token = result.get("access_token", "")
+        if not access_token:
+            raise OpowerAuthError("No access_token in OAuth response")
+
+        return access_token
+
+    async def _refresh_opower_token(self) -> str:
+        """Get a new Opower access token using the OAuth refresh token.
+
+        This requests an Opower-scoped access token that can be used
+        to query the Opower GraphQL API.
+
+        Returns:
+            The Opower access token
+        """
+        logger.debug("Getting Opower token via OAuth...")
+
+        # Get account number for nonce (required by ComEd API)
+        account_number = ""
+        if self._account:
+            account_number = self._account.get("accountNumber", "")
+
+        result = await self._post_oauth_token({
+            "grant_type": "refresh_token",
+            "response_type": "token",
+            "scope": OPOWER_SCOPE,
+            "client_id": COMED_CLIENT_ID,
+            "refresh_token": self._refresh_token,
+            "nonce": account_number,
+        })
+
+        access_token = result.get("access_token", "")
+        if not access_token:
+            raise OpowerAuthError("No access_token in Opower OAuth response")
+
+        return access_token
+
+    async def refresh_token(self) -> bool:
+        """Refresh the Opower token using OAuth refresh_token.
+
+        This uses the mobile OAuth flow which doesn't depend on server-side
+        session state. The refresh_token lasts 30-90 days and is rotated
+        with each use.
 
         Returns:
             True if token refreshed successfully, False otherwise
@@ -395,25 +554,70 @@ class OpowerClient:
         await self.connect()
 
         try:
-            # Keep session alive
-            logger.debug("Refresh: Calling GetSession to keep session alive...")
-            session_resp = await self.client.get(f"{COMED_SECURE_BASE}/api/Services/MyAccountService.svc/GetSession")
-            logger.debug(f"Refresh: GetSession returned {session_resp.status_code}")
+            # Diagnostic: Track refresh attempt
+            now = datetime.now(timezone.utc)
+            self._refresh_attempt_count += 1
+            self._last_refresh_attempt = now
 
-            if session_resp.status_code != 200:
-                logger.warning(f"Refresh: GetSession failed with status {session_resp.status_code}")
-                # Try to get token anyway - session might still be valid
+            # Log timing diagnostics
+            if self._cache_loaded_at:
+                time_since_cache_load = (now - self._cache_loaded_at).total_seconds() / 60
+                logger.info(f"OPOWER: Time since cache load: {time_since_cache_load:.1f} min")
+            if self._last_refresh_success:
+                time_since_last_success = (now - self._last_refresh_success).total_seconds() / 60
+                logger.info(f"OPOWER: Time since last successful refresh: {time_since_last_success:.1f} min")
+            logger.info(f"OPOWER: Refresh stats - attempts: {self._refresh_attempt_count}, success: {self._refresh_success_count}, failures: {self._refresh_failure_count}")
 
-            # Get new token
-            logger.debug("Refresh: Calling GetOpowerToken...")
-            await self._step10_get_opower_token()
+            if not self._refresh_token:
+                raise OpowerAuthError("No refresh_token available - authentication required")
+
+            # Step 1: Refresh the OAuth token (also refreshes the refresh_token)
+            logger.info("OPOWER: Refreshing OAuth tokens...")
+            await self._refresh_oauth_token()
+
+            # Step 2: Get a new Opower access token
+            logger.info("OPOWER: Getting new Opower access token...")
+            opower_token = await self._refresh_opower_token()
+
+            # Update state
+            self.opower_token = f"Bearer {opower_token}"
+
+            # Decode token expiry from JWT
+            try:
+                parts = opower_token.split(".")
+                if len(parts) >= 2:
+                    payload = json.loads(base64.urlsafe_b64decode(parts[1] + "=="))
+                    exp = payload.get("exp")
+                    if exp:
+                        self.token_expiry = datetime.fromtimestamp(exp, tz=timezone.utc)
+            except Exception:
+                # Default to 20 minutes if we can't decode
+                self.token_expiry = datetime.now(timezone.utc) + timedelta(minutes=20)
+
+            # Save updated tokens to cache
             self._save_cache()
-            logger.debug("Refresh: Token refreshed and cached successfully")
+
+            # Update diagnostics
+            self._refresh_success_count += 1
+            self._last_refresh_success = datetime.now(timezone.utc)
+
+            if self.token_expiry:
+                utc_str = self.token_expiry.strftime('%H:%M:%S UTC')
+                local_str = self.token_expiry.astimezone().strftime('%H:%M:%S %Z')
+                logger.info(f"OPOWER: Token refresh SUCCESS (expires {utc_str} / {local_str})")
+            else:
+                logger.info("OPOWER: Token refresh SUCCESS")
+
             return True
 
         except Exception as e:
             import traceback
-            logger.warning(f"Token refresh failed: {type(e).__name__}: {e}")
+            self._refresh_failure_count += 1
+            logger.error(f"OPOWER: Token refresh FAILED: {type(e).__name__}: {e}")
+            logger.error(f"OPOWER: Failure stats - attempt #{self._refresh_attempt_count}, failures: {self._refresh_failure_count}")
+            if self._cache_loaded_at:
+                time_since_cache = (datetime.now(timezone.utc) - self._cache_loaded_at).total_seconds() / 60
+                logger.error(f"OPOWER: Time since cache load: {time_since_cache:.1f} min")
             logger.debug(f"Token refresh traceback:\n{traceback.format_exc()}")
             return False
 
@@ -442,284 +646,435 @@ class OpowerClient:
     # B2C Authentication Steps
     # =========================================================================
 
-    def _extract_csrf_token(self, html: str) -> Optional[str]:
-        """Extract CSRF token from HTML page."""
-        patterns = [
-            r'"csrf"\s*:\s*"([^"]+)"',
-            r'name="csrf"\s+value="([^"]+)"',
-        ]
-        for pattern in patterns:
-            match = re.search(pattern, html)
-            if match:
-                return match.group(1)
+    def _load_javascript_var(self, html: str, var_name: str) -> Optional[Dict]:
+        """Extract JSON from a JavaScript variable in HTML.
+
+        Args:
+            html: The HTML content
+            var_name: The JavaScript variable name (e.g., 'SETTINGS', 'SA_FIELDS')
+
+        Returns:
+            Parsed JSON dict or None if not found
+        """
+        match = re.search(r"var " + var_name + r" = ({.*?});", html, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group(1))
+            except json.JSONDecodeError:
+                pass
         return None
 
-    def _extract_tx(self, html: str) -> Optional[str]:
-        """Extract transaction ID (tx) from HTML page."""
-        patterns = [
-            r'"transId"\s*:\s*"([^"]+)"',
-            r'StateProperties=([^"&]+)',
-        ]
-        for pattern in patterns:
-            match = re.search(pattern, html)
-            if match:
-                return match.group(1)
-        return None
+    def _extract_mfa_options_from_sa_fields(self, sa_fields: Dict) -> Dict[str, str]:
+        """Extract MFA options from SA_FIELDS.
 
-    def _extract_mfa_options(self, html: str) -> dict:
-        """Extract MFA options (email/phone) from B2C page."""
+        Args:
+            sa_fields: The SA_FIELDS dict from B2C page
+
+        Returns:
+            Dict with 'email' and/or 'phone' keys
+        """
         options = {}
-
-        # Extract masked email
-        email_match = re.search(r'displayEmailAddress["\s:]+value["\s:]+([^"]+)"', html)
-        if not email_match:
-            email_match = re.search(r'([a-z]\*+@[a-z]+\.[a-z]+)', html, re.IGNORECASE)
-        if email_match:
-            options['email'] = email_match.group(1)
-
-        # Extract masked phone
-        phone_match = re.search(r'displayPhoneNumber["\s:]+value["\s:]+([^"]+)"', html)
-        if not phone_match:
-            phone_match = re.search(r'(\*{3}-\*{3}-\d{4})', html)
-        if phone_match:
-            options['phone'] = phone_match.group(1)
-
+        for field in sa_fields.get("AttributeFields", []):
+            field_id = field.get("ID", "")
+            if field_id == "displayEmailAddress":
+                options["email"] = field.get("PRE", "")
+            elif field_id == "displayPhoneNumber":
+                options["phone"] = field.get("PRE", "")
+            elif field_id == "emailVerificationControl":
+                # Forced MFA flow - email is nested
+                for display in field.get("DISPLAY_FIELDS", []):
+                    if display.get("ID") == "displayEmailAddress":
+                        options["email"] = display.get("PRE", "")
         return options
 
-    def _get_b2c_url(self, endpoint: str) -> str:
-        """Build B2C URL with required query parameters."""
-        tx_value = self._tx if self._tx.startswith("StateProperties=") else f"StateProperties={self._tx}"
-        params = {"tx": tx_value, "p": B2C_POLICY}
-        return f"{B2C_BASE}{endpoint}?{urlencode(params)}"
-
-    def _get_ajax_headers(self) -> dict:
-        """Get headers for AJAX requests."""
+    def _get_ajax_headers(self) -> Dict:
+        """Get headers for AJAX requests to B2C endpoints."""
         return {
             "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-            "X-CSRF-TOKEN": self._csrf_token or "",
+            "X-CSRF-TOKEN": self._settings.get("csrf", ""),
             "X-Requested-With": "XMLHttpRequest",
+            "User-Agent": DEFAULT_HEADERS["User-Agent"],
         }
 
-    async def _step1_load_login_page(self):
-        """Step 1: Load the B2C login page via ComEd's login flow."""
-        logger.debug("Step 1: Loading login page...")
+    async def _b2c_get(self, path: str, allow_redirects: bool = True) -> Tuple[str, str, Optional[str]]:
+        """Make a GET request to B2C API endpoint.
 
-        resp = await self.client.get(f"{COMED_SECURE_BASE}/pages/login.aspx")
-        html = resp.text
+        Args:
+            path: API path (e.g., 'confirmed')
+            allow_redirects: Whether to follow redirects
 
-        self._csrf_token = self._extract_csrf_token(html)
-        self._tx = self._extract_tx(html)
+        Returns:
+            (response_text, final_path, final_host)
+        """
+        if not self._base_url:
+            raise OpowerAuthError("No B2C base URL set")
 
-        if not self._csrf_token or not self._tx:
-            raise OpowerAuthError("Failed to extract CSRF token or TX from login page")
+        api = self._settings.get("api", "SelfAsserted")
+        url = f"https://{self._base_url}/api/{api}/{path}"
 
-        logger.debug(f"  CSRF: {self._csrf_token[:20]}... TX: {self._tx[:30]}...")
+        params = {
+            "csrf_token": self._settings.get("csrf", ""),
+            "tx": self._settings.get("transId", ""),
+            "p": self._settings.get("hosts", {}).get("policy", B2C_MOBILE_POLICY),
+        }
+
+        resp = await self.client.get(
+            url,
+            params=params,
+            headers={"User-Agent": DEFAULT_HEADERS["User-Agent"]},
+            follow_redirects=allow_redirects,
+        )
+
+        if resp.status_code != 200 and allow_redirects:
+            raise OpowerAuthError(f"B2C GET failed: {resp.status_code}")
+
+        # Update settings from response
+        if allow_redirects:
+            new_settings = self._load_javascript_var(resp.text, "SETTINGS")
+            if new_settings:
+                self._settings = new_settings
+
+        # Return redirect location for non-redirect requests
+        final_host = str(resp.url.host) if resp.url else None
+        return resp.text, str(resp.url.path), final_host
+
+    async def _b2c_post(self, path: str, data: Dict, error_msg: str = "") -> Dict:
+        """Make a POST request to B2C API endpoint.
+
+        Args:
+            path: API path or empty string for base SelfAsserted
+            data: Form data to post
+            error_msg: Error context for logging
+
+        Returns:
+            JSON response
+        """
+        if not self._base_url:
+            raise OpowerAuthError("No B2C base URL set")
+
+        api = self._settings.get("api", "SelfAsserted")
+        url = f"https://{self._base_url}/{api}"
+        if path:
+            url = f"{url}/{path}"
+
+        params = {
+            "tx": self._settings.get("transId", ""),
+            "p": self._settings.get("hosts", {}).get("policy", B2C_MOBILE_POLICY),
+        }
+
+        resp = await self.client.post(
+            url,
+            params=params,
+            data=data,
+            headers=self._get_ajax_headers(),
+        )
+
+        if resp.status_code != 200:
+            raise OpowerAuthError(f"B2C POST {error_msg} failed: {resp.status_code}")
+
+        try:
+            result = resp.json()
+            if result.get("status") != "200":
+                raise OpowerAuthError(f"B2C POST {error_msg}: {result.get('message', result)}")
+            return result
+        except json.JSONDecodeError:
+            if "error" in resp.text.lower():
+                raise OpowerAuthError(f"B2C POST {error_msg}: {resp.text[:200]}")
+            return {}
+
+    async def _step1_load_login_and_mobile_oauth(self):
+        """Step 1: Load login page and initialize mobile OAuth flow with PKCE.
+
+        This visits the ComEd login page to get the Azure AD B2C authorize endpoint,
+        then starts the mobile OAuth flow with PKCE code challenge.
+        """
+        logger.debug("Step 1: Loading login page and initializing mobile OAuth...")
+
+        # Generate PKCE verifier and challenge
+        self._code_verifier, self._code_challenge = self._generate_pkce()
+
+        # Visit login page to get redirected to B2C authorize endpoint
+        resp = await self.client.get(
+            f"https://{COMED_LOGIN_DOMAIN}/Pages/Login.aspx?/login",
+            headers={"User-Agent": DEFAULT_HEADERS["User-Agent"]},
+        )
+
+        # Extract SETTINGS from the response
+        settings = self._load_javascript_var(resp.text, "SETTINGS")
+        if not settings:
+            raise OpowerAuthError("Failed to extract SETTINGS from login page")
+
+        # Check if we got redirected to authorize endpoint
+        final_path = str(resp.url.path) if resp.url else ""
+        if not final_path.endswith("/authorize"):
+            raise OpowerAuthError(f"Expected authorize endpoint, got: {final_path}")
+
+        # Get the B2C base URL from the redirect
+        login_host = str(resp.url.host) if resp.url else ""
+        tenant = settings.get("hosts", {}).get("tenant", "")
+        policy = settings.get("hosts", {}).get("policy", "")
+
+        # Build mobile OAuth base URL (replace web policy with mobile policy)
+        self._base_url = login_host + tenant
+        self._base_url = self._base_url.replace(policy, B2C_MOBILE_POLICY)
+
+        logger.debug(f"  B2C base URL: {self._base_url}")
+
+        # Now load the mobile OAuth page with PKCE challenge
+        await self._load_mobile_oauth_page(login_host + final_path)
+
+    async def _load_mobile_oauth_page(self, authorize_path: str):
+        """Load the mobile OAuth authorize page with PKCE.
+
+        Args:
+            authorize_path: The authorize endpoint path (e.g., 'host/tenant/oauth2/v2.0/authorize')
+        """
+        params = urlencode({
+            "p": B2C_MOBILE_POLICY,
+            "client_id": COMED_CLIENT_ID,
+            "nonce": "defaultNonce",
+            "redirect_uri": f"{COMED_MOBILE_ID}://auth",
+            "scope": "openid offline_access",
+            "response_type": "code",
+            "code_challenge": self._code_challenge,
+            "code_challenge_method": "S256",
+            "prompt": "login",
+        })
+
+        url = f"https://{authorize_path}?{params}"
+
+        resp = await self.client.get(
+            url,
+            headers={"User-Agent": DEFAULT_HEADERS["User-Agent"]},
+        )
+
+        if resp.status_code != 200:
+            raise OpowerAuthError(f"Failed to load mobile OAuth page: {resp.status_code}")
+
+        # Extract SETTINGS
+        settings = self._load_javascript_var(resp.text, "SETTINGS")
+        if not settings:
+            raise OpowerAuthError("Failed to extract SETTINGS from mobile OAuth page")
+
+        # Mobile app uses SelfAsserted API
+        settings["api"] = "SelfAsserted"
+        self._settings = settings
+
+        logger.debug(f"  Mobile OAuth initialized (csrf: {settings.get('csrf', '')[:20]}...)")
 
     async def _step2_submit_credentials(self):
         """Step 2: Submit username and password."""
         logger.debug("Step 2: Submitting credentials...")
 
-        url = self._get_b2c_url("/SelfAsserted")
-        data = {
-            "request_type": "RESPONSE",
-            "signInName": self.username,
-            "password": self.password,
-        }
+        await self._b2c_post(
+            "",
+            {
+                "request_type": "RESPONSE",
+                "signInName": self.username,
+                "password": self.password,
+            },
+            "credentials",
+        )
 
-        resp = await self.client.post(url, data=data, headers=self._get_ajax_headers())
+    async def _step3_confirm_and_get_mfa_options(self) -> Dict[str, str]:
+        """Step 3: Confirm credentials and get MFA options.
 
-        if resp.status_code != 200:
-            raise OpowerAuthError(f"Credential submission failed: {resp.status_code}")
+        Returns:
+            Dict with 'email' and/or 'phone' keys
+        """
+        logger.debug("Step 3: Confirming credentials and getting MFA options...")
 
-        try:
-            result = resp.json()
-            if result.get("status") != "200":
-                raise OpowerAuthError(f"Credential error: {result}")
-        except json.JSONDecodeError:
-            if "error" in resp.text.lower():
-                raise OpowerAuthError(f"Credential error: {resp.text[:200]}")
+        html, _, _ = await self._b2c_get("confirmed")
 
-    async def _step3_confirm_credentials(self):
-        """Step 3: Confirm credentials and get MFA selection page."""
-        logger.debug("Step 3: Confirming credentials...")
+        # Extract SA_FIELDS which contains MFA options
+        sa_fields = self._load_javascript_var(html, "SA_FIELDS")
+        if not sa_fields:
+            raise OpowerAuthError("Failed to get MFA options (no SA_FIELDS)")
 
-        url = self._get_b2c_url("/api/CombinedSigninAndSignup/confirmed")
-        headers = {
-            "X-CSRF-TOKEN": self._csrf_token or "",
-            "X-Requested-With": "XMLHttpRequest",
-        }
-        resp = await self.client.get(url, headers=headers)
-        html = resp.text
-
-        # Update CSRF token
-        new_csrf = self._extract_csrf_token(html)
-        if new_csrf:
-            self._csrf_token = new_csrf
-
-        # Extract MFA options
-        mfa_options = self._extract_mfa_options(html)
-        self._display_email = mfa_options.get('email')
-        self._display_phone = mfa_options.get('phone')
+        mfa_options = self._extract_mfa_options_from_sa_fields(sa_fields)
+        self._display_email = mfa_options.get("email")
+        self._display_phone = mfa_options.get("phone")
 
         logger.debug(f"  MFA options: email={self._display_email}, phone={self._display_phone}")
 
-    async def _step4_select_mfa_method(self):
-        """Step 4: Select MFA method (email or SMS)."""
-        logger.debug(f"Step 4: Selecting MFA method ({self.mfa_method})...")
+        if not self._display_email and not self._display_phone:
+            raise OpowerAuthError("No MFA options available")
 
-        url = self._get_b2c_url("/SelfAsserted")
+        return mfa_options
 
+    async def _step4_select_mfa_and_send_code(self):
+        """Step 4: Select MFA method and send verification code."""
+        logger.debug(f"Step 4: Selecting MFA method ({self.mfa_method}) and sending code...")
+
+        # Select MFA method
         if self.mfa_method == "sms" and self._display_phone:
-            data = {
-                "request_type": "RESPONSE",
-                "mfaEnabledRadio": "Phone",
-                "displayPhoneNumber": self._display_phone,
-            }
-        elif self._display_email:
-            data = {
-                "request_type": "RESPONSE",
-                "mfaEnabledRadio": "Email",
-                "displayEmailAddress": self._display_email,
-            }
+            mfa_selection = "Text"  # Mobile app uses "Text" not "Phone"
         else:
-            raise OpowerAuthError("No MFA option available")
+            mfa_selection = "Email"
 
-        resp = await self.client.post(url, data=data, headers=self._get_ajax_headers())
-        if resp.status_code != 200:
-            raise OpowerAuthError(f"MFA selection failed: {resp.status_code}")
+        await self._b2c_post(
+            "",
+            {
+                "displayEmailAddress": self._display_email or "",
+                "displayPhoneNumber": self._display_phone or "",
+                "mfaEnabledRadio": mfa_selection,
+                "request_type": "RESPONSE",
+            },
+            "MFA selection",
+        )
 
-    async def _step5_confirm_mfa_selection(self):
-        """Step 5: Confirm MFA selection."""
-        logger.debug("Step 5: Confirming MFA selection...")
+        # Confirm MFA selection
+        await self._b2c_get("confirmed")
 
-        url = self._get_b2c_url("/api/CombinedSigninAndSignup/confirmed")
-        headers = {
-            "X-CSRF-TOKEN": self._csrf_token or "",
-            "X-Requested-With": "XMLHttpRequest",
-        }
-        resp = await self.client.get(url, headers=headers)
-
-        new_csrf = self._extract_csrf_token(resp.text)
-        if new_csrf:
-            self._csrf_token = new_csrf
-
-    async def _step6_send_mfa_code(self):
-        """Step 6: Request MFA code to be sent."""
-        logger.debug("Step 6: Requesting MFA code...")
-
-        if self.mfa_method == "sms":
-            endpoint = "/SelfAsserted/DisplayControlAction/vbeta/phoneVerificationControl/SendCode"
-            data = {"request_type": "RESPONSE", "displayPhoneNumber": self._display_phone}
+        # Send verification code
+        if mfa_selection == "Text":
+            verify_path = "DisplayControlAction/vbeta/textVerificationControl/SendCode"
+            verify_data = {"displayPhoneNumber": self._display_phone}
         else:
-            endpoint = "/SelfAsserted/DisplayControlAction/vbeta/emailVerificationControl/SendCode"
-            data = {"request_type": "RESPONSE", "displayEmailAddress": self._display_email}
+            verify_path = "DisplayControlAction/vbeta/emailVerificationControl/SendCode"
+            verify_data = {"displayEmailAddress": self._display_email}
 
-        url = self._get_b2c_url(endpoint)
-        resp = await self.client.post(url, data=data, headers=self._get_ajax_headers())
-
-        if resp.status_code != 200:
-            raise OpowerAuthError(f"Failed to send MFA code: {resp.status_code}")
+        await self._b2c_post(verify_path, verify_data, "send MFA code")
 
         logger.info(f"MFA code sent via {self.mfa_method}")
 
-    async def _step7_verify_mfa_code(self, code: str):
-        """Step 7: Verify the MFA code."""
-        logger.debug(f"Step 7: Verifying MFA code...")
+    async def _step5_verify_mfa_code(self, code: str):
+        """Step 5: Verify MFA code."""
+        logger.debug("Step 5: Verifying MFA code...")
 
-        if self.mfa_method == "sms":
-            endpoint = "/SelfAsserted/DisplayControlAction/vbeta/phoneVerificationControl/VerifyCode"
-            data = {
-                "request_type": "RESPONSE",
+        if self.mfa_method == "sms" and self._display_phone:
+            verify_path = "DisplayControlAction/vbeta/textVerificationControl/VerifyCode"
+            verify_data = {
                 "displayPhoneNumber": self._display_phone,
                 "verificationCode": code,
             }
         else:
-            endpoint = "/SelfAsserted/DisplayControlAction/vbeta/emailVerificationControl/VerifyCode"
-            data = {
-                "request_type": "RESPONSE",
+            verify_path = "DisplayControlAction/vbeta/emailVerificationControl/VerifyCode"
+            verify_data = {
                 "displayEmailAddress": self._display_email,
                 "verificationCode": code,
             }
 
-        url = self._get_b2c_url(endpoint)
-        resp = await self.client.post(url, data=data, headers=self._get_ajax_headers())
+        await self._b2c_post(verify_path, verify_data, "verify MFA code")
 
-        if resp.status_code != 200:
-            raise OpowerAuthError(f"MFA verification failed: {resp.status_code}")
+        # Final submission with code
+        verify_data["request_type"] = "RESPONSE"
+        await self._b2c_post("", verify_data, "final MFA submission")
 
-    async def _step8_final_mfa_submission(self, code: str):
-        """Step 8: Final MFA submission to complete authentication."""
-        logger.debug("Step 8: Final MFA submission...")
+    async def _step6_get_authorization_code(self) -> str:
+        """Step 6: Complete authentication and get authorization code.
 
-        url = self._get_b2c_url("/SelfAsserted")
+        Returns:
+            The authorization code from the redirect URI
+        """
+        logger.debug("Step 6: Getting authorization code...")
 
-        if self.mfa_method == "sms":
-            data = {
-                "request_type": "RESPONSE",
-                "displayPhoneNumber": self._display_phone,
-                "verificationCode": code,
-                "extension_isMFAEnabled": "True",
-            }
-        else:
-            data = {
-                "request_type": "RESPONSE",
-                "displayEmailAddress": self._display_email,
-                "verificationCode": code,
-                "extension_isMFAEnabled": "True",
-            }
+        # Request confirmed endpoint WITHOUT following redirects
+        # The redirect URL will contain our authorization code
+        api = self._settings.get("api", "SelfAsserted")
+        url = f"https://{self._base_url}/api/{api}/confirmed"
 
-        resp = await self.client.post(url, data=data, headers=self._get_ajax_headers())
-        if resp.status_code != 200:
-            raise OpowerAuthError(f"Final MFA submission failed: {resp.status_code}")
-
-        # Update CSRF from cookies
-        for cookie in self.client.cookies.jar:
-            if cookie.name == "x-ms-cpim-csrf":
-                self._csrf_token = cookie.value
-                break
-
-    async def _step9_complete_login(self):
-        """Step 9: Complete login via confirmed endpoint and OAuth redirect."""
-        logger.debug("Step 9: Completing login...")
-
-        tx_value = self._tx if self._tx.startswith("StateProperties=") else f"StateProperties={self._tx}"
-        params = {"csrf_token": self._csrf_token, "tx": tx_value, "p": B2C_POLICY}
-        confirmed_url = f"{B2C_BASE}/api/SelfAsserted/confirmed?{urlencode(params)}"
-
-        headers = {
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Upgrade-Insecure-Requests": "1",
+        params = {
+            "csrf_token": self._settings.get("csrf", ""),
+            "tx": self._settings.get("transId", ""),
+            "p": B2C_MOBILE_POLICY,
         }
 
-        await self.client.get(confirmed_url, headers=headers, timeout=60.0)
+        resp = await self.client.get(
+            url,
+            params=params,
+            headers={"User-Agent": DEFAULT_HEADERS["User-Agent"]},
+            follow_redirects=False,
+        )
 
-        # Verify we got the auth cookie
-        has_auth_cookie = any(".AspNet.cookie" in c.name for c in self.client.cookies.jar)
-        if not has_auth_cookie:
-            logger.warning("Auth cookie not found after login")
+        # Get the redirect location which contains the authorization code
+        location = resp.headers.get("Location", "")
+        if not location or "code=" not in location:
+            raise OpowerAuthError(f"No authorization code in redirect: {location[:100]}")
 
-    async def _step10_get_opower_token(self):
-        """Step 10: Get Opower bearer token."""
-        logger.debug("Step 10: Getting Opower token...")
+        # Extract code from redirect URI (format: msauth.com.comed.mobile://auth/?code=...)
+        code_match = re.search(r"code=([^&]+)", location)
+        if not code_match:
+            raise OpowerAuthError("Failed to extract authorization code")
 
-        url = f"{COMED_SECURE_BASE}/api/Services/OpowerService.svc/GetOpowerToken"
-        headers = {"Content-Type": "application/json; charset=UTF-8"}
+        auth_code = code_match.group(1)
+        logger.debug(f"  Got authorization code: {auth_code[:20]}...")
 
-        resp = await self.client.post(url, json={}, headers=headers, timeout=60.0)
+        return auth_code
+
+    async def _step7_exchange_code_for_tokens(self, auth_code: str):
+        """Step 7: Exchange authorization code for OAuth tokens.
+
+        Args:
+            auth_code: The authorization code from the redirect URI
+        """
+        logger.debug("Step 7: Exchanging authorization code for tokens...")
+
+        # Exchange code for tokens using PKCE
+        result = await self._post_oauth_token({
+            "grant_type": "authorization_code",
+            "scope": f"openid offline_access {COMED_CLIENT_ID}",
+            "client_id": COMED_CLIENT_ID,
+            "code": auth_code,
+            "code_verifier": self._code_verifier,
+            "redirect_uri": COMED_MOBILE_ID,
+        })
+
+        # Store the refresh token (this is the long-lived token!)
+        self._refresh_token = result.get("refresh_token", "")
+        if not self._refresh_token:
+            raise OpowerAuthError("No refresh_token in OAuth response")
+
+        logger.debug("  Got OAuth tokens (refresh_token stored)")
+
+    async def _step8_get_account_info(self):
+        """Step 8: Get account information from ComEd API."""
+        logger.debug("Step 8: Getting account information...")
+
+        # First refresh to get a bearer token
+        bearer_token = await self._refresh_oauth_token()
+
+        # Get account list from ComEd API
+        resp = await self.client.get(
+            f"https://{COMED_EU_DOMAIN}/mobile/custom/auth/accounts",
+            headers={
+                "User-Agent": DEFAULT_HEADERS["User-Agent"],
+                "Authorization": f"Bearer {bearer_token}",
+            },
+        )
 
         if resp.status_code != 200:
-            raise OpowerAuthError(f"Failed to get Opower token: {resp.status_code}")
+            raise OpowerAuthError(f"Failed to get accounts: {resp.status_code}")
 
         result = resp.json()
-        token = result.get("d") or result.get("token") or result.get("access_token")
-        if not token:
-            raise OpowerAuthError(f"No token in response: {result}")
+        if not result.get("success"):
+            raise OpowerAuthError(f"Failed to get accounts: {result}")
 
-        self.opower_token = f"Bearer {token}" if not token.startswith("Bearer") else token
+        # Find active account
+        accounts = result.get("data", [])
+        active_accounts = [a for a in accounts if a.get("status") == "Active"]
 
-        # Decode token expiry
+        if not active_accounts:
+            raise OpowerAuthError("No active accounts found")
+
+        if len(active_accounts) > 1:
+            logger.info(f"Found {len(active_accounts)} active accounts, using first one")
+
+        self._account = active_accounts[0]
+        logger.debug(f"  Account: {self._account.get('accountNumber', 'unknown')}")
+
+    async def _step9_get_opower_token(self):
+        """Step 9: Get Opower access token."""
+        logger.debug("Step 9: Getting Opower access token...")
+
+        # Get Opower token using refresh token
+        opower_token = await self._refresh_opower_token()
+
+        self.opower_token = f"Bearer {opower_token}"
+
+        # Decode token expiry from JWT
         try:
-            parts = token.split(".")
+            parts = opower_token.split(".")
             if len(parts) >= 2:
                 payload = json.loads(base64.urlsafe_b64decode(parts[1] + "=="))
                 exp = payload.get("exp")
