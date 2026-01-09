@@ -1,7 +1,7 @@
 """Configuration management for the TWC Dashboard API."""
 
 from pydantic_settings import BaseSettings
-from pydantic import Field
+from pydantic import Field, AliasChoices
 
 
 class Settings(BaseSettings):
@@ -9,7 +9,7 @@ class Settings(BaseSettings):
 
     # InfluxDB
     influxdb_url: str = Field(default="http://localhost:8086", alias="INFLUXDB_URL")
-    influxdb_token: str = Field(default="twc-dashboard-token", alias="INFLUXDB_TOKEN")
+    influxdb_token: str = Field(default="twc-dashboard-token", validation_alias=AliasChoices("INFLUXDB_TOKEN", "INFLUXDB_ADMIN_TOKEN"))
     influxdb_org: str = Field(default="home", alias="INFLUXDB_ORG")
     influxdb_bucket: str = Field(default="twc_dashboard", alias="INFLUXDB_BUCKET")
 
