@@ -5,7 +5,15 @@ set -e
 mkdir -p /var/log/supervisor /var/log/grafana /data/influxdb /data/grafana/plugins
 chown -R grafana:grafana /data/grafana /var/log/grafana
 
-# Load secrets if mounted
+# Load environment config if mounted
+if [ -f /app/config/.env ]; then
+    echo "[entrypoint] Loading config from /app/config/.env"
+    set -a
+    source /app/config/.env
+    set +a
+fi
+
+# Load secrets if mounted (loaded after .env so secrets can override)
 if [ -f /app/config/.secrets ]; then
     echo "[entrypoint] Loading secrets from /app/config/.secrets"
     set -a
