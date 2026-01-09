@@ -1,0 +1,52 @@
+# Git
+.git
+.gitignore
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Development files
+.env
+.env.*
+.secrets
+*.example
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Cache files
+*.cache
+.comed_opower_cache.json
+
+# Docker compose (not needed in image)
+docker-compose.yml
+docker-compose*.yml
+
+# Scripts (development utilities)
+scripts/
+
+# Note: grafana/dashboards-legacy is included in the image
+
+# OS files
+.DS_Store
+Thumbs.db
