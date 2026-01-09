@@ -2,13 +2,8 @@
 set -e
 
 # Create necessary directories
-mkdir -p /var/log/supervisor /var/log/grafana /data/influxdb /data/grafana/plugins /app/project
+mkdir -p /var/log/supervisor /var/log/grafana /data/influxdb /data/grafana/plugins
 chown -R grafana:grafana /data/grafana /var/log/grafana
-
-# Symlink config files to expected locations for collector compatibility
-if [ -f /app/config/.comed_opower_cache.json ]; then
-    ln -sf /app/config/.comed_opower_cache.json /app/project/.comed_opower_cache.json
-fi
 
 # Function to safely load env files (handles values with special characters)
 load_env_file() {

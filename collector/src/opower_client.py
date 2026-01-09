@@ -94,18 +94,22 @@ class OpowerClient:
 
         # Default cache path - check multiple locations
         if cache_path is None:
-            # Docker: project root mounted at /app/project/
+            # Docker all-in-one: config folder
+            config_path = Path("/app/config/.comed_opower_cache.json")
+            # Docker compose: project root mounted at /app/project/
             docker_path = Path("/app/project/.comed_opower_cache.json")
             # Local development
             local_path = Path(".comed_opower_cache.json")
 
-            if docker_path.exists():
+            if config_path.exists():
+                cache_path = config_path
+            elif docker_path.exists():
                 cache_path = docker_path
             elif local_path.exists():
                 cache_path = local_path
             else:
-                # Default to Docker path (will be checked periodically)
-                cache_path = docker_path
+                # Default to config path for all-in-one (will be checked periodically)
+                cache_path = config_path
         self.cache_path = cache_path
 
         # State
@@ -222,6 +226,7 @@ class OpowerClient:
         # Check multiple possible cache locations
         possible_paths = [
             self.cache_path,
+            Path("/app/config/.comed_opower_cache.json"),
             Path("/app/project/.comed_opower_cache.json"),
             Path(".comed_opower_cache.json"),
         ]
