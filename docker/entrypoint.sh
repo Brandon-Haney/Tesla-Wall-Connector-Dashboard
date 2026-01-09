@@ -38,6 +38,9 @@ load_env_file /app/config/.secrets
 export GF_SECURITY_ADMIN_PASSWORD="${GRAFANA_ADMIN_PASSWORD:-changeme}"
 export GF_SECURITY_ADMIN_USER="${GRAFANA_ADMIN_USER:-admin}"
 
+# Map INFLUXDB_ADMIN_TOKEN to INFLUXDB_TOKEN for collector compatibility
+export INFLUXDB_TOKEN="${INFLUXDB_ADMIN_TOKEN:-twc-dashboard-token}"
+
 # Initialize InfluxDB if not already set up
 INFLUX_INIT_FLAG="/data/influxdb/.initialized"
 
