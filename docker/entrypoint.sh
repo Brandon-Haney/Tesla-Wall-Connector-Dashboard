@@ -5,21 +5,34 @@ set -e
 mkdir -p /var/log/supervisor /var/log/grafana /data/influxdb /data/grafana/plugins
 chown -R grafana:grafana /data/grafana /var/log/grafana
 
+# Function to safely load env files (handles values with special characters)
+load_env_file() {
+    local file="$1"
+    if [ -f "$file" ]; then
+        echo "[entrypoint] Loading config from $file"
+        while IFS= read -r line || [ -n "$line" ]; do
+            # Skip empty lines and comments
+            [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
+            # Only process lines that look like VAR=value
+            if [[ "$line" =~ ^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]]; then
+                key="${BASH_REMATCH[1]}"
+                value="${BASH_REMATCH[2]}"
+                # Remove surrounding quotes if present
+                value="${value#\"}"
+                value="${value%\"}"
+                value="${value#\'}"
+                value="${value%\'}"
+                export "$key=$value"
+            fi
+        done < "$file"
+    fi
+}
+
 # Load environment config if mounted
-if [ -f /app/config/.env ]; then
-    echo "[entrypoint] Loading config from /app/config/.env"
-    set -a
-    source /app/config/.env
-    set +a
-fi
+load_env_file /app/config/.env
 
 # Load secrets if mounted (loaded after .env so secrets can override)
-if [ -f /app/config/.secrets ]; then
-    echo "[entrypoint] Loading secrets from /app/config/.secrets"
-    set -a
-    source /app/config/.secrets
-    set +a
-fi
+load_env_file /app/config/.secrets
 
 # Set Grafana admin password from environment
 export GF_SECURITY_ADMIN_PASSWORD="${GRAFANA_ADMIN_PASSWORD:-changeme}"
