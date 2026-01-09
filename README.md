@@ -29,6 +29,30 @@ A real-time monitoring dashboard for Tesla Wall Connector Gen 3 chargers with Co
 
 ### Installation
 
+#### Option 1: Docker Hub (All-in-One)
+
+Single container with everything included. Best for Unraid and simple deployments.
+
+```bash
+docker run -d \
+  --name twc-dashboard \
+  -p 3080:3000 \
+  -p 8880:8000 \
+  -v /path/to/config:/app/config \
+  -v /path/to/influxdb:/data/influxdb \
+  -e TWC_CHARGERS=garage:192.168.1.100 \
+  -e INFLUXDB_ADMIN_PASSWORD=changeme \
+  -e GRAFANA_ADMIN_PASSWORD=changeme \
+  -e TZ=America/Chicago \
+  brandonhaney/twc-dashboard:latest
+```
+
+Or use a `.env` file in your config folder for all settings.
+
+#### Option 2: Docker Compose (Multi-Container)
+
+For development or when you want separate service containers.
+
 1. **Clone the repository**
    ```bash
    git clone https://github.com/Brandon-Haney/Tesla-Wall-Connector-Dashboard.git
@@ -40,21 +64,22 @@ A real-time monitoring dashboard for Tesla Wall Connector Gen 3 chargers with Co
    docker-compose up -d
    ```
 
-3. **Access the dashboard**
-   - **Grafana**: http://localhost:3080
-     - Username: `admin`
-     - Password: `changeme`
-   - **API**: http://localhost:8000 (REST API & docs)
-   - **InfluxDB**: http://localhost:8086
-
-4. **Configure your Wall Connector IP** (optional - for local TWC monitoring)
+3. **Configure your Wall Connector IP** (optional - for local TWC monitoring)
    ```bash
    cp .env.example .env
    nano .env  # Set TWC_CHARGERS=garage:YOUR_IP
    docker-compose restart collector
    ```
 
-> **Security Note**: For production use, copy `.env.example` to `.env` and set custom passwords. The defaults work for testing but should be changed.
+### Access the Dashboard
+
+- **Grafana**: http://localhost:3080
+  - Username: `admin`
+  - Password: `changeme` (or from your `.env`)
+- **API**: http://localhost:8000 (REST API & docs)
+- **InfluxDB**: http://localhost:8086
+
+> **Security Note**: For production use, set custom passwords via environment variables or `.env` file.
 
 ## Configuration
 
@@ -426,13 +451,17 @@ python -m src.main
 
 ## Unraid Deployment
 
-For Unraid users, a dedicated deployment guide is available:
+For Unraid users, we provide an all-in-one Docker image:
 
-1. **Clone to Unraid**: `/mnt/user/appdata/twc-dashboard`
-2. **Deploy**: `docker compose up -d`
-3. **Credentials**: Default is `admin` / `changeme`
+**Image**: `brandonhaney/twc-dashboard:latest`
 
-See [docs/UNRAID_DEPLOYMENT.md](docs/UNRAID_DEPLOYMENT.md) for complete instructions.
+Quick start:
+1. Add container in Unraid Docker UI
+2. Map ports: 3080:3000 (Grafana), 8880:8000 (API)
+3. Map paths: `/app/config` and `/data/influxdb`
+4. Create `.env` file in config folder with your settings
+
+See [docs/UNRAID_DEPLOYMENT.md](docs/UNRAID_DEPLOYMENT.md) for complete step-by-step instructions.
 
 ## Future Enhancements
 

@@ -2,18 +2,127 @@
 
 This guide walks you through deploying the Tesla Wall Connector Dashboard on an Unraid server.
 
-## Prerequisites
+## Deployment Options
+
+| Method | Best For | Complexity |
+|--------|----------|------------|
+| **Docker Hub (All-in-One)** | Simple single-container setup | Easy |
+| **Docker Compose** | Advanced users, customization | Moderate |
+
+---
+
+## Option 1: Docker Hub All-in-One (Recommended)
+
+A single container with InfluxDB, Grafana, Collector, and API bundled together.
+
+**Image**: `brandonhaney/twc-dashboard:latest`
+
+### Step 1: Create Config Directory
+
+SSH into Unraid or use the terminal:
+
+```bash
+mkdir -p /mnt/user/appdata/twc-dashboard/config
+mkdir -p /mnt/user/appdata/twc-dashboard/influxdb
+```
+
+### Step 2: Create Configuration File
+
+Create `/mnt/user/appdata/twc-dashboard/config/.env`:
+
+```bash
+nano /mnt/user/appdata/twc-dashboard/config/.env
+```
+
+Add your configuration:
+
+```env
+# Required
+TZ=America/Chicago
+TWC_CHARGERS=garage:192.168.1.100
+
+# Security - CHANGE THESE!
+INFLUXDB_ADMIN_USER=admin
+INFLUXDB_ADMIN_PASSWORD=your_secure_password
+GRAFANA_ADMIN_USER=admin
+GRAFANA_ADMIN_PASSWORD=your_secure_password
+INFLUXDB_ADMIN_TOKEN=your-secret-token-here
+
+# InfluxDB
+INFLUXDB_ORG=home
+INFLUXDB_BUCKET=twc_dashboard
+
+# Optional features
+COMED_ENABLED=true
+TESSIE_ENABLED=false
+OPOWER_ENABLED=false
+```
+
+See `docker/.env.example` in the repo for all available options.
+
+### Step 3: Create Secrets File (Optional)
+
+For Tessie integration, create `/mnt/user/appdata/twc-dashboard/config/.secrets`:
+
+```
+TESSIE_ACCESS_TOKEN=your_tessie_token_here
+```
+
+### Step 4: Add Container in Unraid UI
+
+1. Go to **Docker** tab
+2. Click **Add Container**
+3. Toggle **Advanced View** (top right)
+
+**Basic Config:**
+
+| Field | Value |
+|-------|-------|
+| Name | `TWC-Dashboard` |
+| Repository | `brandonhaney/twc-dashboard:latest` |
+| Network Type | `bridge` |
+
+**Port Mappings** (click "Add another Path, Port, Variable..."):
+
+| Config Type | Name | Container Port | Host Port |
+|-------------|------|----------------|-----------|
+| Port | Grafana | `3000` | `3080` |
+| Port | API | `8000` | `8880` |
+| Port | InfluxDB | `8086` | `8886` |
+
+**Path Mappings:**
+
+| Config Type | Name | Container Path | Host Path |
+|-------------|------|----------------|-----------|
+| Path | InfluxDB Data | `/data/influxdb` | `/mnt/user/appdata/twc-dashboard/influxdb` |
+| Path | Config | `/app/config` | `/mnt/user/appdata/twc-dashboard/config` |
+
+### Step 5: Start and Access
+
+1. Click **Apply**
+2. Wait for the container to start (first run initializes databases)
+3. Access Grafana: `http://YOUR_UNRAID_IP:3080`
+4. Login with credentials from your `.env` file
+
+### Updating
+
+```bash
+docker pull brandonhaney/twc-dashboard:latest
+docker restart TWC-Dashboard
+```
+
+---
+
+## Option 2: Docker Compose
+
+For users who want more control or to customize individual services.
+
+### Prerequisites
 
 - Unraid 6.9+ with Docker enabled
 - Docker Compose Manager plugin (from Community Applications)
-- Your Wall Connector on the same network as Unraid
-- (Optional) Tessie API token for Fleet API features
 
-## Quick Start
-
-### 1. Clone the Repository
-
-SSH into your Unraid server or use the terminal:
+### Step 1: Clone the Repository
 
 ```bash
 cd /mnt/user/appdata
@@ -21,81 +130,45 @@ git clone https://github.com/Brandon-Haney/Tesla-Wall-Connector-Dashboard.git tw
 cd twc-dashboard
 ```
 
-### 2. Deploy
-
-**Option A: Using Docker Compose Manager (Recommended)**
-
-1. Open Unraid web UI
-2. Go to Docker → Add New Stack
-3. Name: `twc-dashboard`
-4. Compose file: `/mnt/user/appdata/twc-dashboard/docker-compose.yml`
-5. Click "Compose Up"
-
-**Option B: Command Line**
-
-```bash
-cd /mnt/user/appdata/twc-dashboard
-docker compose up -d
-```
-
-### 3. Access the Dashboard
-
-- **Grafana**: http://YOUR_UNRAID_IP:3080
-  - Username: `admin`
-  - Password: `changeme`
-- **API Docs**: http://YOUR_UNRAID_IP:8000/docs
-- **InfluxDB**: http://YOUR_UNRAID_IP:8086
-
-### 4. Configure Your Setup (Optional)
-
-To customize settings (Wall Connector IP, passwords, Tessie integration):
+### Step 2: Configure
 
 ```bash
 cp .env.example .env
 nano .env
 ```
 
-**Common settings in `.env`:**
-```env
-# Your Wall Connector IP address
-TWC_CHARGERS=garage:192.168.1.100
-
-# Your timezone (optional, defaults to America/Chicago)
-TZ=America/Chicago
-
-# Custom passwords (recommended for security)
-GRAFANA_ADMIN_PASSWORD=your_secure_password
-INFLUXDB_ADMIN_PASSWORD=your_secure_password
-```
-
-> **Note**: The dashboard works without `.env` using default credentials. Create `.env` only if you need to customize settings or secure your installation.
-
-**For Tessie/Fleet API features**, copy and edit `.secrets`:
+For Tessie integration:
 ```bash
 cp .secrets.example .secrets
 nano .secrets
 ```
 
-Add your Tessie token:
-```
-TESSIE_ACCESS_TOKEN=your_tessie_token_here
-```
+### Step 3: Deploy
 
-Then enable in `.env`:
-```env
-TESSIE_ENABLED=true
-```
+**Using Docker Compose Manager:**
 
-Restart to apply changes:
+1. Open Unraid web UI
+2. Go to Docker -> Add New Stack
+3. Name: `twc-dashboard`
+4. Compose file: `/mnt/user/appdata/twc-dashboard/docker-compose.yml`
+5. Click "Compose Up"
+
+**Using Command Line:**
+
 ```bash
-docker compose restart collector
+cd /mnt/user/appdata/twc-dashboard
+docker compose up -d
 ```
 
----
+### Step 4: Access
 
-## Updating
+- **Grafana**: http://YOUR_UNRAID_IP:3080
+  - Username: `admin`
+  - Password: `changeme` (or from `.env`)
+- **API Docs**: http://YOUR_UNRAID_IP:8000/docs
+- **InfluxDB**: http://YOUR_UNRAID_IP:8086
 
-To update to the latest version:
+### Updating
 
 ```bash
 cd /mnt/user/appdata/twc-dashboard
@@ -103,50 +176,29 @@ git pull
 docker compose up -d --build
 ```
 
-The `--build` flag ensures the collector and API containers are rebuilt with the new code.
-
 ---
 
-## Data Migration from Windows
+## Opower Setup (ComEd Meter Data)
 
-If you're migrating from an existing Windows installation and want to preserve historical data:
+To add actual meter data from your ComEd smart meter:
 
-### Export Data from Windows
+1. Enable in your `.env`:
+   ```env
+   OPOWER_ENABLED=true
+   ```
 
-```powershell
-# On your Windows machine
-mkdir C:\twc-backup
+2. Run the setup script on a machine with a browser (your local PC):
+   ```bash
+   pip install httpx opower
+   python scripts/comed_opower_setup.py
+   ```
 
-# Export InfluxDB data
-docker exec twc-influxdb influx backup /tmp/backup --bucket twc_dashboard --org home --token YOUR_TOKEN
-docker cp twc-influxdb:/tmp/backup C:\twc-backup\influxdb-backup
-```
+3. Copy the generated `.comed_opower_cache.json` to your config folder:
+   ```
+   /mnt/user/appdata/twc-dashboard/config/.comed_opower_cache.json
+   ```
 
-### Transfer to Unraid
-
-Copy the backup folder to Unraid using:
-- SMB share (easiest)
-- SCP: `scp -r C:\twc-backup\influxdb-backup root@UNRAID_IP:/mnt/user/appdata/twc-backup/`
-- USB drive
-
-### Import on Unraid
-
-```bash
-# Start just InfluxDB first
-docker compose up -d influxdb
-
-# Wait for it to be healthy
-sleep 30
-
-# Copy backup into container
-docker cp /mnt/user/appdata/twc-backup/influxdb-backup twc-influxdb:/tmp/backup
-
-# Restore the data
-docker exec twc-influxdb influx restore /tmp/backup --org home --token YOUR_TOKEN
-
-# Start remaining services
-docker compose up -d
-```
+The collector auto-detects the cache file within 30 seconds.
 
 ---
 
@@ -162,19 +214,16 @@ If your Wall Connector is on a different VLAN:
 
 1. Ensure routing is configured between VLANs
 2. Update `TWC_CHARGERS` in `.env` with the correct IP
-3. You may need to add the container to a custom Docker network with VLAN access
+3. You may need to use `Network Type: Host` instead of bridge
 
 ### Using Fleet API Only
 
-If you can't access the local Wall Connector API from Unraid, you can disable it and rely solely on Fleet API:
+If you can't access the local Wall Connector API from Unraid:
 
 ```env
-# In .env
 LOCAL_TWC_ENABLED=false
 TESSIE_ENABLED=true
 ```
-
-The Fleet API provides all charging data via the cloud, so local network access to the Wall Connector becomes optional.
 
 ---
 
@@ -182,105 +231,70 @@ The Fleet API provides all charging data via the cloud, so local network access 
 
 ### View Logs
 
+**All-in-One:**
 ```bash
-# All services
-docker compose logs -f
+docker logs TWC-Dashboard
+docker exec TWC-Dashboard cat /var/log/supervisor/collector.log | tail -50
+```
 
-# Specific service
+**Docker Compose:**
+```bash
 docker compose logs -f collector
-```
-
-### Check Service Status
-
-```bash
-docker compose ps
-```
-
-### Restart Services
-
-```bash
-docker compose restart
 ```
 
 ### Common Issues
 
 **"No data" in dashboards**
 - Check collector logs for connection errors
-- Verify Wall Connector IP is correct and accessible
+- Verify Wall Connector IP is correct and reachable
 - Wait a few minutes for data to accumulate
 
 **Grafana login fails**
-- Default credentials: admin / changeme
-- If using custom .env, check `GRAFANA_ADMIN_PASSWORD`
+- Check `GRAFANA_ADMIN_PASSWORD` in your `.env`
+- On first run, credentials come from `.env`
 
-**Fleet API not working**
-- Verify Tessie token in `.secrets` file
-- Check `TESSIE_ENABLED=true` in `.env`
-- Look for auth errors in collector logs
+**"unauthorized" errors in Grafana panels**
+- InfluxDB token mismatch
+- Delete influxdb data folder and restart to reinitialize:
+  ```bash
+  docker stop TWC-Dashboard
+  rm -rf /mnt/user/appdata/twc-dashboard/influxdb/*
+  docker start TWC-Dashboard
+  ```
 
-**Build failures**
-- Check Docker logs: `docker compose logs`
-- Ensure you have enough disk space for building images
-- Try rebuilding: `docker compose build --no-cache`
-
----
-
-## Backup Strategy
-
-### Recommended Backup Items
-
-Add these paths to your Unraid backup schedule:
-
-```
-/mnt/user/appdata/twc-dashboard/.env
-/mnt/user/appdata/twc-dashboard/.secrets
-```
-
-### InfluxDB Data Backup
-
-For periodic data backups:
-
-```bash
-# Create backup
-docker exec twc-influxdb influx backup /tmp/backup --bucket twc_dashboard --org home --token YOUR_TOKEN
-docker cp twc-influxdb:/tmp/backup /mnt/user/appdata/twc-backup/influxdb-$(date +%Y%m%d)
-
-# Keep last 7 days
-find /mnt/user/appdata/twc-backup -name "influxdb-*" -mtime +7 -exec rm -rf {} \;
-```
-
-Consider adding this to a User Script that runs weekly.
-
----
-
-## Updating Dashboard Configuration
-
-When you want to modify Grafana dashboards or add features:
-
-1. Make changes in your local repository
-2. Commit and push to GitHub
-3. Pull changes on Unraid:
-   ```bash
-   cd /mnt/user/appdata/twc-dashboard
-   git pull
-   docker compose restart grafana
-   ```
-
-Dashboard JSON files are mounted directly, so changes take effect after a Grafana restart.
+**Opower not detecting cache file**
+- Ensure file is at `/mnt/user/appdata/twc-dashboard/config/.comed_opower_cache.json`
+- Check logs: `docker exec TWC-Dashboard cat /var/log/supervisor/collector.log | grep -i opower`
 
 ---
 
 ## Ports Reference
 
-| Service | Port | Purpose |
-|---------|------|---------|
-| Grafana | 3080 | Dashboard UI |
-| API | 8000 | REST API & WebSocket |
-| InfluxDB | 8086 | Database (optional external access) |
+| Service | Container Port | Recommended Host Port |
+|---------|---------------|----------------------|
+| Grafana | 3000 | 3080 |
+| API | 8000 | 8880 |
+| InfluxDB | 8086 | 8886 |
 
-If these ports conflict with other services, modify them in `docker-compose.yml`:
+These avoid common Unraid app ports (Sonarr 8989, Radarr 7878, Portainer 9000, etc.)
 
-```yaml
-ports:
-  - "3001:3000"  # Changed Grafana from 3080 to 3001
+---
+
+## Backup
+
+### Config Files
+
+Add to your backup schedule:
+```
+/mnt/user/appdata/twc-dashboard/config/.env
+/mnt/user/appdata/twc-dashboard/config/.secrets
+/mnt/user/appdata/twc-dashboard/config/.comed_opower_cache.json
+```
+
+### InfluxDB Data
+
+For Docker Hub all-in-one:
+```bash
+docker exec TWC-Dashboard influx backup /tmp/backup --bucket twc_dashboard --org home --token YOUR_TOKEN
+docker cp TWC-Dashboard:/tmp/backup /mnt/user/appdata/twc-backup/
 ```
